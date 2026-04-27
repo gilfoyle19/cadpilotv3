@@ -1,62 +1,7 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class LLMSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LLM_", extra="ignore")
-
-    provider: str = "openai"
-    model: str = "gpt-4.1-mini"
-    temperature: float = 0.1
-    max_tokens: int = 4000
-    timeout_seconds: int = 120
-    streaming: bool = True
-    reasoning_model: str = "gpt-4.1"
-    critic_model: str = "gpt-4.1"
-    code_model: str = "gpt-4.1"
-
-
-class LangSmithSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LANGSMITH_", extra="ignore")
-
-    tracing: bool = True
-    project: str = "cadpilotv3"
-    endpoint: str = "https://api.smith.langchain.com"
-    api_key: str | None = None
-
-
-class LoggingSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LOG_", extra="ignore")
-
-    level: str = "INFO"
-    json_logs: bool = False
-    include_timestamps: bool = True
-
-
-class RuntimeSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CAD_", extra="ignore")
-
-    environment: str = "development"
-    max_repair_attempts: int = 3
-    max_critic_a_attempts: int = 2
-    max_critic_b_attempts: int = 2
-    artifacts_dir: str = "artifacts"
-    prompt_dir: str = "src/cadpilotv3/prompts"
-    enable_async: bool = True
-    enable_streaming: bool = True
-
-
-class ExecutionSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="EXEC_", extra="ignore")
-
-    sandbox_enabled: bool = True
-    cadquery_python_bin: str = "python"
-    export_step: bool = True
-    export_stl: bool = True
-    export_dxf: bool = False
-    execution_timeout_seconds: int = 180
 
 
 class AppSettings(BaseSettings):
@@ -69,11 +14,50 @@ class AppSettings(BaseSettings):
     app_name: str = "cadpilotv3"
     app_version: str = "0.1.0"
 
-    llm: LLMSettings = Field(default_factory=LLMSettings)
-    langsmith: LangSmithSettings = Field(default_factory=LangSmithSettings)
-    logging: LoggingSettings = Field(default_factory=LoggingSettings)
-    runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
-    execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
+    langsmith_tracing: bool = True
+    langsmith_project: str = "cadpilotv3"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str | None = None
+
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4.1-mini"
+    llm_reasoning_model: str = "gpt-4.1"
+    llm_critic_model: str = "gpt-4.1"
+    llm_code_model: str = "gpt-4.1"
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 4000
+    llm_timeout_seconds: int = 120
+    llm_streaming: bool = True
+
+    log_level: str = "INFO"
+    log_json_logs: bool = False
+    log_include_timestamps: bool = True
+
+    cad_environment: str = "development"
+    cad_max_repair_attempts: int = 3
+    cad_max_critic_a_attempts: int = 2
+    cad_max_critic_b_attempts: int = 2
+    cad_artifacts_dir: str = "artifacts"
+    cad_prompt_dir: str = "src/cadpilotv3/prompts"
+    cad_enable_async: bool = True
+    cad_enable_streaming: bool = True
+
+    exec_sandbox_enabled: bool = True
+    exec_cadquery_python_bin: str = "python"
+    exec_export_step: bool = True
+    exec_export_stl: bool = True
+    exec_export_dxf: bool = False
+    exec_execution_timeout_seconds: int = 180
+
+    @computed_field
+    @property
+    def langsmith(self) -> dict:
+        return {
+            "tracing": self.langsmith_tracing,
+            "project": self.langsmith_project,
+            "endpoint": self.langsmith_endpoint,
+            "api_key": self.langsmith_api_key,
+        }
 
 
 @lru_cache(maxsize=1)
