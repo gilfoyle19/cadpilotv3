@@ -5,6 +5,7 @@ description = "Multi-agent CAD generation pipeline using LangChain and LangGraph
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "cadquery>=2.7.0",
     "langchain>=1.2.15",
     "langsmith>=0.7.37",
     "pydantic>=2.13.3",
