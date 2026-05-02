@@ -29,6 +29,16 @@ class AppSettings(BaseSettings):
     llm_timeout_seconds: int = 120
     llm_streaming: bool = True
 
+    openai_api_key: str | None = None
+    openai_base_url: str | None = None
+
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_http_referer: str | None = None
+    openrouter_x_title: str | None = None
+
+    anthropic_api_key: str | None = None
+
     log_level: str = "INFO"
     log_json_logs: bool = False
     log_include_timestamps: bool = True
@@ -57,6 +67,52 @@ class AppSettings(BaseSettings):
             "project": self.langsmith_project,
             "endpoint": self.langsmith_endpoint,
             "api_key": self.langsmith_api_key,
+        }
+
+    @computed_field
+    @property
+    def llm_profiles(self) -> dict:
+        return {
+            "structured": {
+                "provider": self.llm_provider,
+                "model": self.llm_model,
+                "temperature": 0.0,
+                "max_tokens": self.llm_max_tokens,
+                "timeout_seconds": self.llm_timeout_seconds,
+                "streaming": self.llm_streaming,
+            },
+            "planner": {
+                "provider": self.llm_provider,
+                "model": self.llm_reasoning_model,
+                "temperature": self.llm_temperature,
+                "max_tokens": self.llm_max_tokens,
+                "timeout_seconds": self.llm_timeout_seconds,
+                "streaming": self.llm_streaming,
+            },
+            "coder": {
+                "provider": self.llm_provider,
+                "model": self.llm_code_model,
+                "temperature": 0.0,
+                "max_tokens": self.llm_max_tokens,
+                "timeout_seconds": self.llm_timeout_seconds,
+                "streaming": self.llm_streaming,
+            },
+            "critic": {
+                "provider": self.llm_provider,
+                "model": self.llm_critic_model,
+                "temperature": 0.0,
+                "max_tokens": self.llm_max_tokens,
+                "timeout_seconds": self.llm_timeout_seconds,
+                "streaming": self.llm_streaming,
+            },
+            "summary": {
+                "provider": self.llm_provider,
+                "model": self.llm_model,
+                "temperature": 0.0,
+                "max_tokens": self.llm_max_tokens,
+                "timeout_seconds": self.llm_timeout_seconds,
+                "streaming": self.llm_streaming,
+            },
         }
 
 
