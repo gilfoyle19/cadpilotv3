@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+from cadpilotv3.config.settings import AppSettings, get_settings
+
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
@@ -146,7 +148,7 @@ class LLMFactory:
             api_key=self.settings.anthropic_api_key,
         )
 
-
 @lru_cache(maxsize=1)
-def get_llm_factory(settings: AppSettings) -> LLMFactory:
+def get_llm_factory() -> LLMFactory:
+    settings = get_settings()
     return LLMFactory(settings)

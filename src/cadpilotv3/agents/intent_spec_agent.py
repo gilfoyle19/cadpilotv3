@@ -9,7 +9,7 @@ from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 class IntentSpecAgent:
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
-        self.llm_factory = get_llm_factory(settings)
+        self.llm_factory = get_llm_factory()
 
     def run(self, user_prompt: str) -> IntentSpec:
         llm = self.llm_factory.get_for_agent(AgentName.INTENT_SPEC)

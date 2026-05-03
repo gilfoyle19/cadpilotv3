@@ -1,3 +1,4 @@
-from cadpilotv3.graph.state import PipelineState, build_initial_state
+from cadpilotv3.graph.pipeline_state import PipelineState
+from cadpilotv3.graph.pipeline import build_pipeline
 
-__all__ = ["PipelineState", "build_initial_state"]
+__all__ = ["PipelineState", "build_pipeline"]

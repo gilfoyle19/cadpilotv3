@@ -1,0 +1,39 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intent_spec_agent(intent_spec_agent)
+	geometry_planner_agent(geometry_planner_agent)
+	critic_checkpoint_a(critic_checkpoint_a)
+	parameter_agent(parameter_agent)
+	code_generation_skeleton_agent(code_generation_skeleton_agent)
+	code_generation_infill_agent(code_generation_infill_agent)
+	execution_validation_node(execution_validation_node)
+	repair_agent(repair_agent)
+	critic_checkpoint_b(critic_checkpoint_b)
+	export_summary_agent(export_summary_agent)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intent_spec_agent;
+	code_generation_infill_agent -.-> execution_validation_node;
+	code_generation_skeleton_agent --> code_generation_infill_agent;
+	critic_checkpoint_a -.-> geometry_planner_agent;
+	critic_checkpoint_a -.-> parameter_agent;
+	critic_checkpoint_b -.-> code_generation_skeleton_agent;
+	critic_checkpoint_b -.-> export_summary_agent;
+	critic_checkpoint_b -.-> geometry_planner_agent;
+	execution_validation_node -.-> critic_checkpoint_b;
+	execution_validation_node -.-> repair_agent;
+	geometry_planner_agent --> critic_checkpoint_a;
+	intent_spec_agent --> geometry_planner_agent;
+	parameter_agent --> code_generation_skeleton_agent;
+	repair_agent -.-> code_generation_infill_agent;
+	repair_agent -.-> critic_checkpoint_b;
+	repair_agent -.-> geometry_planner_agent;
+	export_summary_agent --> __end__;
+	code_generation_infill_agent -.-> code_generation_infill_agent;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

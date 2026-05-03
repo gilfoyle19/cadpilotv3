@@ -4,7 +4,7 @@ from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
 from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
-# Keep these imports exactly from your existing schema module paths.
+
 from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.critic import CriticReport
@@ -13,13 +13,14 @@ from cadpilotv3.schemas.critic import CriticReport
 class CriticCheckpointAAgent:
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
-        self.llm_factory = get_llm_factory(settings)
+        self.llm_factory = get_llm_factory()
 
     def run(
         self,
         user_prompt: str,
         spec: IntentSpec,
         geometry_plan: GeometryPlan,
+        critic_attempt_count: int | None = None,
     ) -> CriticReport:
         llm = self.llm_factory.get_for_agent(AgentName.CRITIC_A)
 
@@ -29,17 +30,25 @@ class CriticCheckpointAAgent:
             "critic_a_examples.md",
         )
 
-        prompt = "\n\n".join(
-            [
-                system_prompt.strip(),
-                few_shot_prompt.strip(),
-                "Original user prompt:",
-                user_prompt.strip(),
-                "Structured spec:",
-                spec.model_dump_json(indent=2),
-                "Geometry plan:",
-                geometry_plan.model_dump_json(indent=2),
-            ]
-        )
+        prompt_parts = [
+            system_prompt.strip(),
+            few_shot_prompt.strip(),
+            "Original user prompt:",
+            user_prompt.strip(),
+            "Structured spec:",
+            spec.model_dump_json(indent=2),
+            "Geometry plan:",
+            geometry_plan.model_dump_json(indent=2),
+        ]
+
+        if critic_attempt_count is not None:
+            prompt_parts.extend(
+                [
+                    "Critic attempt count:",
+                    str(critic_attempt_count),
+                ]
+            )
+
+        prompt = "\n\n".join(prompt_parts)
 
         return invoke_pydantic(llm, prompt, CriticReport)

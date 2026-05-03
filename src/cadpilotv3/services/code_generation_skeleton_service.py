@@ -9,6 +9,7 @@ from cadpilotv3.config.settings import AppSettings
 
 
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
+from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
 
 logger = logging.getLogger(__name__)
@@ -22,12 +23,14 @@ class CodeGenerationSkeletonService:
         self,
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
+        spec: IntentSpec | None = None,
     ) -> str:
         logger.info("Running code_generation_agent_stage_a")
 
         skeleton_script = self.agent.run(
             geometry_plan=geometry_plan,
             parameters=parameters,
+            spec=spec,
         )
 
         logger.info(

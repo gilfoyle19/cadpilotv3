@@ -9,15 +9,27 @@ class PromptNotFoundError(FileNotFoundError):
     """Raised when a prompt file cannot be found."""
 
 
-def get_prompt_dir(settings: AppSettings) -> Path:
+def get_prompt_root(settings: AppSettings) -> Path:
     return Path(settings.cad_prompt_dir).resolve()
 
 
 def get_prompt_path(settings: AppSettings, prompt_name: str) -> Path:
-    prompt_path = get_prompt_dir(settings) / prompt_name
-    if not prompt_path.exists():
-        raise PromptNotFoundError(f"Prompt file not found: {prompt_path}")
-    return prompt_path
+    root = get_prompt_root(settings)
+
+    candidates = [
+        root / prompt_name,
+        root / "system" / prompt_name,
+        root / "examples" / prompt_name,
+    ]
+
+    for prompt_path in candidates:
+        if prompt_path.exists():
+            return prompt_path
+
+    searched = "\n".join(str(path) for path in candidates)
+    raise PromptNotFoundError(
+        f"Prompt file not found: {prompt_name}\nSearched:\n{searched}"
+    )
 
 
 def load_prompt_text(settings: AppSettings, prompt_name: str) -> str:

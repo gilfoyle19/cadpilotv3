@@ -13,7 +13,7 @@ from cadpilotv3.schemas.repair import RepairOutput
 class RepairAgent:
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
-        self.llm_factory = get_llm_factory(settings)
+        self.llm_factory = get_llm_factory()
 
     def run(
         self,

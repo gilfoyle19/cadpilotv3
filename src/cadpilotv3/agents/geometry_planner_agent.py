@@ -4,7 +4,7 @@ from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
 from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
-# Keep these imports exactly from your existing schema module paths.
+
 from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.critic import CriticReport
@@ -13,7 +13,7 @@ from cadpilotv3.schemas.critic import CriticReport
 class GeometryPlannerAgent:
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
-        self.llm_factory = get_llm_factory(settings)
+        self.llm_factory = get_llm_factory()
 
     def run(
         self,

@@ -21,7 +21,6 @@ from cadpilotv3.shared.path_utils import (
 )
 from cadpilotv3.shared.prompt_utils import (
     PromptNotFoundError,
-    get_prompt_dir,
     get_prompt_path,
     load_prompt_text,
     render_prompt,
@@ -45,7 +44,6 @@ __all__ = [
     "get_run_dir",
     "get_temp_dir",
     "PromptNotFoundError",
-    "get_prompt_dir",
     "get_prompt_path",
     "load_prompt_text",
     "render_prompt",
