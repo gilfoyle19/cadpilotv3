@@ -44,7 +44,7 @@ class AppSettings(BaseSettings):
     log_include_timestamps: bool = True
 
     cad_environment: str = "development"
-    cad_max_repair_attempts: int = 3
+    cad_max_repair_attempts: int = 2
     cad_max_critic_a_attempts: int = 2
     cad_max_critic_b_attempts: int = 2
     cad_artifacts_dir: str = "artifacts"
