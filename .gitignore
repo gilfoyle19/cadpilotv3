@@ -223,3 +223,5 @@ system/
 NOTES.md
 few_shot/
 .sandbox_runs/
+models/
+output/

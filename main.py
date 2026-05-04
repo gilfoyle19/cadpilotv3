@@ -9,7 +9,6 @@ from cadpilotv3.graph.pipeline import build_pipeline
 from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.logging import log_error, log_with_context, setup_logging
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -37,10 +36,7 @@ def build_initial_state(user_prompt: str) -> PipelineState:
         "geometry_plan": {},
         "parameters": {},
 
-        "script_skeleton": "",
         "script": "",
-        "pending_infill_functions": [],
-        "completed_infill_functions": [],
 
         "validation": {},
         "critic_a_report": {},
@@ -72,7 +68,9 @@ def main() -> None:
         },
     )
 
-    user_prompt = "L-bracket for mounting a servo motor to 20x20 aluminum extrusion, M3 bolts, needs to be rigid, export as STEP"
+    user_prompt = (
+        "Design a single-piece bearing pillow block for a 608 bearing. Use mm units and export as STEP. The part will be CNC machined from aluminum. Include a rectangular base with two M6 through holes, a raised central bearing boss, and a circular bearing seat sized for a press-fit 608 bearing. Avoid internal undercuts, keep all holes through-drilled from accessible faces, and include small chamfers on external edges. The design should be a solid structural block, approximately 80mm long, 35mm wide, and 35mm tall."
+    )
 
     try:
         pipeline = build_pipeline(settings)

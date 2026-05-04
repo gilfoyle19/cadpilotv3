@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from cadpilotv3.config.settings import get_settings
 from cadpilotv3.graph.pipeline_state import PipelineState
 
 
@@ -9,8 +10,9 @@ def route_critic_a(
     state: PipelineState,
 ) -> Literal["parameter_agent", "geometry_planner_agent"]:
     report = state["critic_a_report"]
+    max_attempts = get_settings().cad_max_critic_a_attempts
 
-    if state["critic_a_attempts"] >= 2:
+    if state["critic_a_attempts"] >= max_attempts:
         state["user_facing_warnings"].extend(
             [issue.description for issue in getattr(report, "issues", [])]
         )
@@ -21,14 +23,6 @@ def route_critic_a(
 
     state["critic_a_attempts"] += 1
     return "geometry_planner_agent"
-
-
-def route_infill_progress(
-    state: PipelineState,
-) -> Literal["code_generation_infill_agent", "execution_validation_node"]:
-    if state.get("pending_infill_functions"):
-        return "code_generation_infill_agent"
-    return "execution_validation_node"
 
 
 def route_validation(
@@ -42,17 +36,18 @@ def route_validation(
 def route_repair(
     state: PipelineState,
 ) -> Literal[
-    "code_generation_infill_agent",
+    "execution_validation_node",
     "geometry_planner_agent",
     "critic_checkpoint_b",
 ]:
     decision = state["repair_decision"]
+    max_attempts = get_settings().cad_max_repair_attempts
 
-    if state["repair_count"] >= 3:
+    if state["repair_count"] >= max_attempts:
         return "critic_checkpoint_b"
 
     if decision.action == "patch":
-        return "code_generation_infill_agent"
+        return "execution_validation_node"
 
     if decision.action == "replan":
         return "geometry_planner_agent"
@@ -64,12 +59,13 @@ def route_critic_b(
     state: PipelineState,
 ) -> Literal[
     "export_summary_agent",
-    "code_generation_skeleton_agent",
+    "code_generation_infill_agent",
     "geometry_planner_agent",
 ]:
     report = state["critic_b_report"]
+    max_attempts = get_settings().cad_max_critic_b_attempts
 
-    if state["critic_b_attempts"] >= 2:
+    if state["critic_b_attempts"] >= max_attempts:
         state["user_facing_warnings"].extend(
             [issue.description for issue in getattr(report, "issues", [])]
         )
@@ -79,7 +75,7 @@ def route_critic_b(
         return "export_summary_agent"
     if report.routing == "patch":
         state["critic_b_attempts"] += 1
-        return "code_generation_skeleton_agent"
+        return "code_generation_infill_agent"
     if report.routing == "replan":
         state["critic_b_attempts"] += 1
         return "geometry_planner_agent"

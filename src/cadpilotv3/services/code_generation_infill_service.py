@@ -7,8 +7,6 @@ from cadpilotv3.agents.code_generation_infill_agent import (
     CodeGenerationInfillAgent,
 )
 from cadpilotv3.config.settings import AppSettings
-
-
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
@@ -21,52 +19,52 @@ class CodeGenerationInfillService:
     def __init__(self, settings: AppSettings) -> None:
         self.agent = CodeGenerationInfillAgent(settings)
 
-    def execute(
+    def execute_script(
         self,
-        skeleton_script: str,
+        spec: IntentSpec,
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
-        function_name: str,
         repair_context: RepairOutput | None = None,
     ) -> str:
         logger.info(
-            "Running code_generation_agent_stage_b",
-            extra={"function_name": function_name},
+            "Running code_generation_agent for complete script",
+            extra={"component": getattr(spec, "component", None)},
         )
 
-        implemented_function = self.agent.run(
-            skeleton_script=skeleton_script,
+        implemented_script = self.agent.run(
+            spec=spec,
             geometry_plan=geometry_plan,
             parameters=parameters,
-            function_name=function_name,
             repair_context=repair_context,
         )
+        implemented_script = self._extract_generated_code(implemented_script)
 
         logger.info(
-            "Implemented CadQuery function",
-            extra={
-                "function_name": function_name,
-                "output_length_chars": len(implemented_function),
-            },
+            "Implemented complete CadQuery script",
+            extra={"output_length_chars": len(implemented_script)},
         )
 
-        return implemented_function
+        return implemented_script
 
-    def list_functions_to_implement(
-        self,
-        skeleton_script: str,
-        spec: IntentSpec | None = None,
-    ) -> list[str]:
-        logger.info(
-            "Listing functions to implement from skeleton script",
-            extra={"script_length_chars": len(skeleton_script)},
+    def _extract_generated_code(self, generated_text: str) -> str:
+        text = generated_text.strip()
+        full_fence = re.compile(
+            r"^\s*```(?:python|py)?\s*\r?\n(?P<code>.*?)\r?\n```\s*$",
+            re.IGNORECASE | re.DOTALL,
         )
+        match = full_fence.match(text)
+        if match:
+            return match.group("code").strip() + "\n"
 
-        return self._extract_function_names_from_script(skeleton_script)
+        python_fence = re.compile(
+            r"```(?:python|py)\s*\r?\n(?P<code>.*?)\r?\n```",
+            re.IGNORECASE | re.DOTALL,
+        )
+        match = python_fence.search(text)
+        if match:
+            return match.group("code").strip() + "\n"
 
-    def _extract_function_names_from_script(self, skeleton_script: str) -> list[str]:
-        regex = re.compile(r"^\s*def\s+([A-Za-z_]\w*)\s*\(", re.MULTILINE)
-        return list(dict.fromkeys(regex.findall(skeleton_script)))
+        return text + "\n"
 
     def apply_function_implementation(
         self,

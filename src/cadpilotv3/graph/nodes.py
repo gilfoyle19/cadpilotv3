@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import logging
 
-from cadpilotv3.config.settings import AppSettings
-from cadpilotv3.services.intent_spec_service import IntentSpecService
-from cadpilotv3.services.geometry_planner_service import GeometryPlannerService
-from cadpilotv3.services.critic_checkpoint_a_service import CriticCheckpointAService
-from cadpilotv3.services.parameter_service import ParameterService
-from cadpilotv3.services.code_generation_skeleton_service import CodeGenerationSkeletonService
-from cadpilotv3.services.code_generation_infill_service import CodeGenerationInfillService
-from cadpilotv3.services.cadquery_execution_sandbox_service import CadQueryExecutionSandboxService
 from cadpilotv3.agents.execution_validation_agent import ExecutionValidationAgent
-from cadpilotv3.services.repair_service import RepairService
+from cadpilotv3.config.settings import AppSettings
+from cadpilotv3.graph.pipeline_state import PipelineState
+from cadpilotv3.services.cadquery_execution_sandbox_service import CadQueryExecutionSandboxService
+from cadpilotv3.services.code_generation_infill_service import CodeGenerationInfillService
+from cadpilotv3.services.critic_checkpoint_a_service import CriticCheckpointAService
 from cadpilotv3.services.critic_checkpoint_b_service import CriticCheckpointBService
 from cadpilotv3.services.export_summary_service import ExportSummaryService
-from cadpilotv3.graph.pipeline_state import PipelineState
+from cadpilotv3.services.geometry_planner_service import GeometryPlannerService
+from cadpilotv3.services.intent_spec_service import IntentSpecService
+from cadpilotv3.services.parameter_service import ParameterService
+from cadpilotv3.services.repair_service import RepairService
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ class PipelineNodes:
         self.critic_checkpoint_a_service = CriticCheckpointAService(settings)
         self.parameter_service = ParameterService(settings)
 
-        self.code_generation_skeleton_service = CodeGenerationSkeletonService(settings)
         self.code_generation_infill_service = CodeGenerationInfillService(settings)
 
         self.sandbox_service = CadQueryExecutionSandboxService()
@@ -44,7 +42,10 @@ class PipelineNodes:
 
     def geometry_planner_agent(self, state: PipelineState) -> PipelineState:
         critique = None
-        if state.get("critic_a_report") and getattr(state["critic_a_report"], "verdict", None) == "fail":
+        if (
+            state.get("critic_a_report")
+            and getattr(state["critic_a_report"], "verdict", None) == "fail"
+        ):
             critique = state["critic_a_report"]
 
         state["geometry_plan"] = self.geometry_planner_service.execute(
@@ -68,54 +69,15 @@ class PipelineNodes:
         )
         return state
 
-    def code_generation_skeleton_agent(self, state: PipelineState) -> PipelineState:
-        skeleton = self.code_generation_skeleton_service.execute(
-            geometry_plan=state["geometry_plan"],
-            parameters=state["parameters"],
-            spec=state["spec"],
-        )
-
-        state["script_skeleton"] = skeleton
-        state["script"] = skeleton
-
-        function_names = self.code_generation_infill_service.list_functions_to_implement(
-            skeleton_script=state["script_skeleton"],
-            spec=state["spec"],
-        )
-        state["pending_infill_functions"] = function_names
-        state["completed_infill_functions"] = []
-
-        return state
-
     def code_generation_infill_agent(self, state: PipelineState) -> PipelineState:
-        current_script = state["script"]
-
-        pending = list(state.get("pending_infill_functions", []))
-        if not pending:
-            return state
-
-        function_name = pending[0]
-
-        implemented_function = self.code_generation_infill_service.execute(
-            skeleton_script=current_script,
+        implemented_script = self.code_generation_infill_service.execute_script(
+            spec=state["spec"],
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
-            function_name=function_name,
             repair_context=state["repair_decision"],
         )
 
-        updated_script = self.code_generation_infill_service.apply_function_implementation(
-            current_script=current_script,
-            function_name=function_name,
-            implemented_function_code=implemented_function,
-        )
-
-        state["script"] = updated_script
-        state["pending_infill_functions"] = pending[1:]
-        state["completed_infill_functions"] = [
-            *state["completed_infill_functions"],
-            function_name,
-        ]
+        state["script"] = implemented_script
 
         return state
 
@@ -128,6 +90,7 @@ class PipelineNodes:
                 "workspace_dir": artifacts.workspace_dir,
                 "result_object_name": artifacts.result_object_name,
             }
+            state["repair_decision"] = None
         else:
             state["final_geometry"] = None
 

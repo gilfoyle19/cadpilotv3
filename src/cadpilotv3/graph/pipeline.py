@@ -3,14 +3,13 @@ from __future__ import annotations
 from langgraph.graph import END, StateGraph
 
 from cadpilotv3.config.settings import AppSettings
-from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.graph.nodes import PipelineNodes
+from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.graph.routing import (
     route_critic_a,
-    route_infill_progress,
-    route_validation,
-    route_repair,
     route_critic_b,
+    route_repair,
+    route_validation,
 )
 
 
@@ -22,7 +21,6 @@ def build_pipeline(settings: AppSettings):
     graph.add_node("geometry_planner_agent", nodes.geometry_planner_agent)
     graph.add_node("critic_checkpoint_a", nodes.critic_checkpoint_a)
     graph.add_node("parameter_agent", nodes.parameter_agent)
-    graph.add_node("code_generation_skeleton_agent", nodes.code_generation_skeleton_agent)
     graph.add_node("code_generation_infill_agent", nodes.code_generation_infill_agent)
     graph.add_node("execution_validation_node", nodes.execution_validation_node)
     graph.add_node("repair_agent", nodes.repair_agent)
@@ -43,17 +41,8 @@ def build_pipeline(settings: AppSettings):
         },
     )
 
-    graph.add_edge("parameter_agent", "code_generation_skeleton_agent")
-    graph.add_edge("code_generation_skeleton_agent", "code_generation_infill_agent")
-
-    graph.add_conditional_edges(
-        "code_generation_infill_agent",
-        route_infill_progress,
-        {
-            "code_generation_infill_agent": "code_generation_infill_agent",
-            "execution_validation_node": "execution_validation_node",
-        },
-    )
+    graph.add_edge("parameter_agent", "code_generation_infill_agent")
+    graph.add_edge("code_generation_infill_agent", "execution_validation_node")
 
     graph.add_conditional_edges(
         "execution_validation_node",
@@ -68,7 +57,7 @@ def build_pipeline(settings: AppSettings):
         "repair_agent",
         route_repair,
         {
-            "code_generation_infill_agent": "code_generation_infill_agent",
+            "execution_validation_node": "execution_validation_node",
             "geometry_planner_agent": "geometry_planner_agent",
             "critic_checkpoint_b": "critic_checkpoint_b",
         },
@@ -79,7 +68,7 @@ def build_pipeline(settings: AppSettings):
         route_critic_b,
         {
             "export_summary_agent": "export_summary_agent",
-            "code_generation_skeleton_agent": "code_generation_skeleton_agent",
+            "code_generation_infill_agent": "code_generation_infill_agent",
             "geometry_planner_agent": "geometry_planner_agent",
         },
     )

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_text, load_prompt_text
-
-
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
+from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.repair import RepairOutput
+from cadpilotv3.shared import invoke_text, load_prompt_text
 
 
 class CodeGenerationInfillAgent:
@@ -17,10 +16,9 @@ class CodeGenerationInfillAgent:
 
     def run(
         self,
-        skeleton_script: str,
+        spec: IntentSpec,
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
-        function_name: str,
         repair_context: RepairOutput | None = None,
     ) -> str:
         llm = self.llm_factory.get_for_agent(AgentName.CODEGEN)
@@ -40,13 +38,16 @@ class CodeGenerationInfillAgent:
             few_shot_prompt.strip(),
             "CadQuery 2.x API reference:",
             cadquery_cheatsheet.strip(),
-            "Skeleton script:",
-            skeleton_script.strip(),
+            "Intent spec:",
+            spec.model_dump_json(indent=2),
             "Geometry plan:",
             geometry_plan.model_dump_json(indent=2),
             "Parameter schema:",
             parameters.model_dump_json(indent=2),
-            f"Function to implement: {function_name}",
+            (
+                "Generation mode: complete script. Generate the final runnable "
+                "CadQuery script directly from the inputs."
+            ),
         ]
 
         if repair_context is not None:

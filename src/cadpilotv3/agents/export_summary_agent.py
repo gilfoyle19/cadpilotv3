@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
-
-from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.schemas.parameters import ParameterSchema
-from cadpilotv3.schemas.validation import ValidationReport
 from cadpilotv3.schemas.critic import CriticBReport
 from cadpilotv3.schemas.export import (
     ExportedFile,
     ExportSummary,
+)
+from cadpilotv3.schemas.intent_spec import IntentSpec
+from cadpilotv3.schemas.parameters import ParameterSchema
+from cadpilotv3.schemas.validation import ValidationReport
+from cadpilotv3.shared import (
+    JSONExtractionError,
+    invoke_text,
+    load_prompt_text,
+    parse_json,
+    strip_code_fences,
 )
 
 
@@ -60,4 +65,13 @@ class ExportSummaryAgent:
             ]
         )
 
-        return invoke_pydantic(llm, prompt, ExportSummary)
+        response_text = invoke_text(llm, prompt)
+        try:
+            return ExportSummary.model_validate(parse_json(response_text))
+        except JSONExtractionError:
+            markdown_report = strip_code_fences(response_text)
+            return ExportSummary(
+                export_files=export_files,
+                assembly_report_markdown=markdown_report,
+                user_facing_warnings=critic_b_report.user_facing_warnings,
+            )

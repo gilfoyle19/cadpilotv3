@@ -23,7 +23,7 @@ class AppSettings(BaseSettings):
     llm_model: str = "gpt-4.1-mini"
     llm_reasoning_model: str = "gpt-4.1"
     llm_critic_model: str = "gpt-4.1"
-    llm_code_model: str = "gpt-4.1"
+    llm_code_model: str = "gpt-5.5"
     llm_temperature: float = 0.1
     llm_max_tokens: int = 4000
     llm_timeout_seconds: int = 120
