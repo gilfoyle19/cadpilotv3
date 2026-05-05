@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from typing import Literal
 
 
 class CoordinateConvention(BaseModel):
@@ -107,7 +108,7 @@ class GeometryPlan(BaseModel):
         "extra": "ignore",
     }
 
-    artifact_type: str = "single_part"
+    artifact_type: Literal["single_part", "assembly"]
     coordinate_convention: CoordinateConvention | None = None
 
     parts: list[PlannedPart] = Field(default_factory=list)
