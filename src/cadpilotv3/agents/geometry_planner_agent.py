@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
-
-
-from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.critic import CriticReport
+from cadpilotv3.schemas.geometry_plan import GeometryPlan
+from cadpilotv3.schemas.intent_spec import IntentSpec
+from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
 
 class GeometryPlannerAgent:
@@ -19,6 +17,7 @@ class GeometryPlannerAgent:
         self,
         spec: IntentSpec,
         critique: CriticReport | None = None,
+        critic_b_replan_instructions: str | None = None,
     ) -> GeometryPlan:
         llm = self.llm_factory.get_for_agent(AgentName.GEOMETRY_PLANNER)
 
@@ -41,6 +40,18 @@ class GeometryPlannerAgent:
                     "Critic Checkpoint A critique:",
                     critique.model_dump_json(indent=2),
                     "This is a replan. Address every flagged issue explicitly.",
+                ]
+            )
+
+        if critic_b_replan_instructions:
+            prompt_sections.extend(
+                [
+                    "Critic Checkpoint B replan instructions:",
+                    critic_b_replan_instructions.strip(),
+                    (
+                        "This is a final-output replan. Address these semantic "
+                        "fidelity issues explicitly in replan_changes."
+                    ),
                 ]
             )
 

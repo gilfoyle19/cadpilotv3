@@ -15,7 +15,13 @@ from cadpilotv3.schemas.repair import RepairOutput
 logger = logging.getLogger(__name__)
 
 
+class CodeGenerationOutputError(ValueError):
+    """Raised when the code generation model returns unusable script text."""
+
+
 class CodeGenerationInfillService:
+    max_generation_attempts = 3
+
     def __init__(self, settings: AppSettings) -> None:
         self.agent = CodeGenerationInfillAgent(settings)
 
@@ -25,26 +31,64 @@ class CodeGenerationInfillService:
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
         repair_context: RepairOutput | None = None,
+        critic_feedback: str | None = None,
+        current_script: str | None = None,
     ) -> str:
         logger.info(
             "Running code_generation_agent for complete script",
             extra={"component": getattr(spec, "component", None)},
         )
 
-        implemented_script = self.agent.run(
-            spec=spec,
-            geometry_plan=geometry_plan,
-            parameters=parameters,
-            repair_context=repair_context,
-        )
-        implemented_script = self._extract_generated_code(implemented_script)
+        generation_feedback = None
+        last_error: CodeGenerationOutputError | None = None
 
-        logger.info(
-            "Implemented complete CadQuery script",
-            extra={"output_length_chars": len(implemented_script)},
-        )
+        for attempt_number in range(1, self.max_generation_attempts + 1):
+            implemented_script = self.agent.run(
+                spec=spec,
+                geometry_plan=geometry_plan,
+                parameters=parameters,
+                repair_context=repair_context,
+                critic_feedback=critic_feedback,
+                current_script=current_script,
+                generation_feedback=generation_feedback,
+            )
+            implemented_script = self._extract_generated_code(implemented_script)
 
-        return implemented_script
+            try:
+                self._validate_generated_code(implemented_script)
+            except CodeGenerationOutputError as exc:
+                last_error = exc
+                generation_feedback = str(exc)
+                logger.warning(
+                    "Code generation returned unusable output; retrying",
+                    extra={
+                        "attempt_number": attempt_number,
+                        "max_attempts": self.max_generation_attempts,
+                        "reason": str(exc),
+                    },
+                )
+                continue
+
+            logger.info(
+                "Implemented complete CadQuery script",
+                extra={
+                    "output_length_chars": len(implemented_script),
+                    "attempt_number": attempt_number,
+                },
+            )
+
+            return implemented_script
+
+        raise last_error or CodeGenerationOutputError("Code generation failed validation")
+
+    def _validate_generated_code(self, implemented_script: str) -> None:
+        if not implemented_script.strip():
+            raise CodeGenerationOutputError("Code generation returned an empty script")
+
+        if "cadquery" not in implemented_script:
+            raise CodeGenerationOutputError(
+                "Code generation returned text that does not appear to import CadQuery"
+            )
 
     def _extract_generated_code(self, generated_text: str) -> str:
         text = generated_text.strip()

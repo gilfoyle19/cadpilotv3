@@ -4,12 +4,11 @@ import logging
 
 from cadpilotv3.agents.critic_checkpoint_b_agent import CriticCheckpointBAgent
 from cadpilotv3.config.settings import AppSettings
-
-
+from cadpilotv3.schemas.critic import CriticBReport, CriticReport
+from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.schemas.critic import CriticReport
+from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.validation import ValidationReport
-from cadpilotv3.schemas.critic import CriticBReport
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,8 @@ class CriticCheckpointBService:
         self,
         user_prompt: str,
         spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
         validation: ValidationReport,
         critic_a_report: CriticReport,
         repair_count: int,
@@ -34,6 +35,8 @@ class CriticCheckpointBService:
         report = self.agent.run(
             user_prompt=user_prompt,
             spec=spec,
+            geometry_plan=geometry_plan,
+            parameters=parameters,
             validation=validation,
             critic_a_report=critic_a_report,
             repair_count=repair_count,

@@ -48,9 +48,19 @@ class PipelineNodes:
         ):
             critique = state["critic_a_report"]
 
+        critic_b_replan_instructions = None
+        critic_b_report = state.get("critic_b_report")
+        if (
+            critic_b_report
+            and getattr(critic_b_report, "routing", None) == "replan"
+            and getattr(critic_b_report, "replan_instructions", None)
+        ):
+            critic_b_replan_instructions = critic_b_report.replan_instructions
+
         state["geometry_plan"] = self.geometry_planner_service.execute(
             spec=state["spec"],
             critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
         )
         return state
 
@@ -70,11 +80,22 @@ class PipelineNodes:
         return state
 
     def code_generation_infill_agent(self, state: PipelineState) -> PipelineState:
+        critic_feedback = None
+        critic_b_report = state.get("critic_b_report")
+        if (
+            critic_b_report
+            and getattr(critic_b_report, "routing", None) == "patch"
+            and getattr(critic_b_report, "patch_instructions", None)
+        ):
+            critic_feedback = critic_b_report.patch_instructions
+
         implemented_script = self.code_generation_infill_service.execute_script(
             spec=state["spec"],
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
             repair_context=state["repair_decision"],
+            critic_feedback=critic_feedback,
+            current_script=state.get("script") if critic_feedback else None,
         )
 
         state["script"] = implemented_script
@@ -121,6 +142,8 @@ class PipelineNodes:
         state["critic_b_report"] = self.critic_checkpoint_b_service.execute(
             user_prompt=state["user_prompt"],
             spec=state["spec"],
+            geometry_plan=state["geometry_plan"],
+            parameters=state["parameters"],
             validation=state["validation"],
             critic_a_report=state["critic_a_report"],
             repair_count=state["repair_count"],

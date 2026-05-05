@@ -20,6 +20,9 @@ class CodeGenerationInfillAgent:
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
         repair_context: RepairOutput | None = None,
+        critic_feedback: str | None = None,
+        current_script: str | None = None,
+        generation_feedback: str | None = None,
     ) -> str:
         llm = self.llm_factory.get_for_agent(AgentName.CODEGEN)
 
@@ -55,6 +58,33 @@ class CodeGenerationInfillAgent:
                 [
                     "Repair context:",
                     repair_context.model_dump_json(indent=2),
+                ]
+            )
+
+        if critic_feedback:
+            prompt_parts.extend(
+                [
+                    "Critic B semantic patch instructions:",
+                    critic_feedback.strip(),
+                    "Current script to revise:",
+                    (current_script or "").strip(),
+                    (
+                        "This is a targeted regeneration. Preserve the current "
+                        "geometry plan and parameter schema unless these "
+                        "instructions explicitly require a local correction."
+                    ),
+                ]
+            )
+
+        if generation_feedback:
+            prompt_parts.extend(
+                [
+                    "Previous generation attempt failed validation:",
+                    generation_feedback.strip(),
+                    (
+                        "Return one complete, non-empty Python CadQuery script. "
+                        "Do not return prose, an empty code fence, or a partial excerpt."
+                    ),
                 ]
             )
 

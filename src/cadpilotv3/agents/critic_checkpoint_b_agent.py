@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
-
-
+from cadpilotv3.schemas.critic import CriticBReport, CriticReport
+from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.schemas.critic import CriticReport
+from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.validation import ValidationReport
-from cadpilotv3.schemas.critic import CriticBReport
-
+from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
 
 class CriticCheckpointBAgent:
@@ -21,6 +19,8 @@ class CriticCheckpointBAgent:
         self,
         user_prompt: str,
         spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
         validation: ValidationReport,
         critic_a_report: CriticReport,
         repair_count: int,
@@ -41,6 +41,10 @@ class CriticCheckpointBAgent:
                 user_prompt.strip(),
                 "Structured spec:",
                 spec.model_dump_json(indent=2),
+                "Geometry plan:",
+                geometry_plan.model_dump_json(indent=2),
+                "Parameter schema:",
+                parameters.model_dump_json(indent=2),
                 "Validation report:",
                 validation.model_dump_json(indent=2),
                 "Checkpoint A report:",
