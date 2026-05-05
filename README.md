@@ -56,35 +56,139 @@ The graph is generated from the live LangGraph pipeline definition in
 `-- tests/                           # Test suite
 ```
 
-## Setup
+## Installation And Setup
 
-This project uses Python 3.11+ and `uv` for environment management.
+### Prerequisites
+
+- Python 3.11 or newer.
+- `uv` for dependency and virtual environment management.
+- An OpenAI, Anthropic, or OpenRouter API key, depending on the provider you
+  want to use.
+
+Install `uv` if it is not already available:
+
+```powershell
+pip install uv
+```
+
+Confirm the tools are available:
+
+```powershell
+python --version
+uv --version
+```
+
+### Install Dependencies
+
+From the repository root:
 
 ```powershell
 uv sync
 ```
 
-Create a `.env` file with the provider credentials you want to use:
+This creates the local virtual environment and installs the project dependencies,
+including CadQuery, LangChain, LangGraph-compatible packages, and provider SDKs.
+
+If `uv` has trouble creating its user-level cache on Windows, use the repo-local
+cache directory:
+
+```powershell
+$env:UV_CACHE_DIR = ".uv-cache"
+uv sync
+```
+
+### Configure Environment Variables
+
+Create a `.env` file in the repository root.
+
+For OpenAI:
 
 ```env
-OPENAI_API_KEY=...
-LANGSMITH_API_KEY=...
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_openai_key_here
+LLM_MODEL=gpt-4.1
+LLM_REASONING_MODEL=gpt-4.1
+LLM_CRITIC_MODEL=gpt-4.1
+LLM_CODE_MODEL=gpt-5.4
+```
+
+Optional LangSmith tracing:
+
+```env
 LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your_langsmith_key_here
+LANGSMITH_PROJECT=cadpilotv3
+```
+
+For Anthropic:
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_anthropic_key_here
+```
+
+For OpenRouter:
+
+```env
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_openrouter_key_here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 The main settings live in `src/cadpilotv3/config/settings.py`. Common knobs
-include LLM provider/model selection, repair limits, artifact paths, and CadQuery
-execution/export options.
+include:
 
-## Run the Example Pipeline
+- LLM provider and model selection.
+- repair and critic retry limits.
+- artifact output paths.
+- CadQuery execution timeout.
+- STEP, STL, and DXF export toggles.
+- prompt directory location.
+
+### Verify The Install
+
+Run the test suite:
+
+```powershell
+uv run pytest
+```
+
+Run Ruff:
+
+```powershell
+uv run ruff check src tests
+```
+
+If pytest hits temporary directory permission issues on Windows, set a local
+cache first:
+
+```powershell
+$env:UV_CACHE_DIR = ".uv-cache"
+uv run pytest
+```
+
+### Run The Example Pipeline
 
 ```powershell
 uv run python main.py
 ```
 
-The default prompt in `main.py` asks the system to design a CNC-machined bearing
-pillow block for a 608 bearing and export CAD files.
+The default prompt in `main.py` asks the system to generate the configured CAD
+example prompt and export CAD files.
 
+Generated outputs are written under:
+
+```text
+artifacts/
+.sandbox_runs/
+output/
+```
+
+LLM traces, when enabled, are written under:
+
+```text
+artifacts/llm_runs/
+```
 
 ## Outputs
 

@@ -71,7 +71,7 @@ def main() -> None:
     )
 
     user_prompt = (
-        "Design a simple single-piece FDM-printable mounting plate in mm units and export as STEP. The part should be a rectangular flat plate 80mm long, 40mm wide, and 4mm thick. Add four M4 clearance through holes, one near each corner, with 8mm edge offset from both adjacent edges. Add a shallow 1mm chamfer around the outside top edges. Keep the bottom flat for printing. The design should be a static single solid part with no moving components, no assemblies, and no decorative features."
+        "Create a static two-part FDM-printable electronics enclosure assembly in CadQuery using millimeters and exporting STEP, with a 100x60x30 mm open-top base, 2 mm walls, four internal M3 standoffs near the corners, a flat removable lid sitting closed on top, four aligned M3 clearance holes in the lid, and a small rectangular cable opening on one short side, modeled as separate base and lid parts with no hinges or motion."
         
     )
 

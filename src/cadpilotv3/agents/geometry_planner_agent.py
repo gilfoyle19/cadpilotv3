@@ -18,6 +18,7 @@ class GeometryPlannerAgent:
         spec: IntentSpec,
         critique: CriticReport | None = None,
         critic_b_replan_instructions: str | None = None,
+        repair_replan_instructions: str | None = None,
     ) -> GeometryPlan:
         llm = self.llm_factory.get_for_agent(AgentName.GEOMETRY_PLANNER)
 
@@ -51,6 +52,19 @@ class GeometryPlannerAgent:
                     (
                         "This is a final-output replan. Address these semantic "
                         "fidelity issues explicitly in replan_changes."
+                    ),
+                ]
+            )
+
+        if repair_replan_instructions:
+            prompt_sections.extend(
+                [
+                    "Repair agent replan instructions:",
+                    repair_replan_instructions.strip(),
+                    (
+                        "This replan follows an execution or geometry validation "
+                        "failure. Address the repair root cause explicitly and "
+                        "avoid recreating the same implementation failure."
                     ),
                 ]
             )

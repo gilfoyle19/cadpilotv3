@@ -20,6 +20,7 @@ class GeometryPlannerService:
         spec: IntentSpec,
         critique: CriticReport | None = None,
         critic_b_replan_instructions: str | None = None,
+        repair_replan_instructions: str | None = None,
     ) -> GeometryPlan:
         logger.info("Running geometry_planner_agent")
 
@@ -27,6 +28,7 @@ class GeometryPlannerService:
             spec=spec,
             critique=critique,
             critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
         )
 
         logger.info(
@@ -35,7 +37,11 @@ class GeometryPlannerService:
                 "parts_count": len(geometry_plan.parts),
                 "joint_definitions_count": len(geometry_plan.joint_definitions),
                 "failure_risks_count": len(geometry_plan.failure_risks),
-                "is_replan": critique is not None or critic_b_replan_instructions is not None,
+                "is_replan": (
+                    critique is not None
+                    or critic_b_replan_instructions is not None
+                    or repair_replan_instructions is not None
+                ),
             },
         )
 

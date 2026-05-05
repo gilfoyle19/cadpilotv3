@@ -152,7 +152,8 @@ class CodeGenerationInfillAgent:
                 (
                     "The script must define build_part() or build_assembly(), "
                     "validate_geometry(...), export_all(...), and an "
-                    "if __name__ == '__main__': export block."
+                    "if __name__ == '__main__': export block that assigns the "
+                    "built object to global model or assembly."
                 ),
                 (
                     "validate_geometry may check bounding boxes, part counts, "

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import ast
-import io
-import os
-import sys
-import time
-import uuid
-import json
-import traceback
 import contextlib
-from dataclasses import dataclass, asdict
+import io
+import json
+import os
+import time
+import traceback
+import uuid
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -99,10 +98,15 @@ class CadQueryExecutionSandboxService:
 
         try:
             os.chdir(run_dir)
-            with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+            with (
+                contextlib.redirect_stdout(stdout_buffer),
+                contextlib.redirect_stderr(stderr_buffer),
+            ):
                 exec(compile(script, str(script_path), "exec"), globals_dict, globals_dict)
 
             result_object_name = self._find_result_object_name(globals_dict)
+            if result_object_name is None:
+                result_object_name = self._materialize_result_object(globals_dict)
             if result_object_name is not None:
                 geometry_report = self._inspect_geometry(globals_dict[result_object_name])
 
@@ -183,7 +187,11 @@ class CadQueryExecutionSandboxService:
         frame = extracted[-1]
         line = frame.lineno
         function = frame.name
-        code_line = script_lines[line - 1] if line and 1 <= line <= len(script_lines) else frame.line
+        code_line = (
+            script_lines[line - 1]
+            if line and 1 <= line <= len(script_lines)
+            else frame.line
+        )
         return line, function, code_line
 
     def _find_result_object_name(self, globals_dict: dict[str, Any]) -> str | None:
@@ -204,9 +212,23 @@ class CadQueryExecutionSandboxService:
 
         return None
 
+    def _materialize_result_object(self, globals_dict: dict[str, Any]) -> str | None:
+        fallback_builders = [
+            ("assembly", "build_assembly"),
+            ("model", "build_part"),
+        ]
+
+        for result_name, builder_name in fallback_builders:
+            builder = globals_dict.get(builder_name)
+            if callable(builder):
+                globals_dict[result_name] = builder()
+                return result_name
+
+        return None
+
     def _inspect_geometry(self, obj: Any) -> SandboxGeometryReport | None:
         try:
-            import cadquery as cq
+            __import__("cadquery")
         except Exception:
             return None
 

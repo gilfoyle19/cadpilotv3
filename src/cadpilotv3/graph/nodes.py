@@ -61,11 +61,25 @@ class PipelineNodes:
         ):
             critic_b_replan_instructions = critic_b_report.replan_instructions
 
+        repair_replan_instructions = None
+        repair_decision = state.get("repair_decision")
+        if (
+            repair_decision
+            and getattr(repair_decision, "action", None) == "replan"
+            and getattr(repair_decision, "replan_instructions", None)
+        ):
+            repair_replan_instructions = repair_decision.replan_instructions
+
         state["geometry_plan"] = self.geometry_planner_service.execute(
             spec=state["spec"],
             critique=critique,
             critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
         )
+
+        if repair_replan_instructions is not None:
+            state["repair_decision"] = None
+
         return state
 
     def critic_checkpoint_a(self, state: PipelineState) -> PipelineState:
@@ -75,6 +89,14 @@ class PipelineNodes:
             geometry_plan=state["geometry_plan"],
             critic_attempt_count=state["critic_a_attempts"],
         )
+
+        report = state["critic_a_report"]
+        if (
+            getattr(report, "verdict", None) != "pass"
+            and getattr(report, "routing", None) == "replan"
+        ):
+            state["critic_a_attempts"] += 1
+
         return state
 
     def parameter_agent(self, state: PipelineState) -> PipelineState:
@@ -154,7 +176,8 @@ class PipelineNodes:
                     ),
                     confidence="medium",
                 )
-            state["repair_count"] += 1
+
+        state["repair_count"] += 1
 
         return state
 
@@ -171,6 +194,10 @@ class PipelineNodes:
         state["user_facing_warnings"] = list(
             getattr(state["critic_b_report"], "user_facing_warnings", []) or []
         )
+
+        if getattr(state["critic_b_report"], "routing", None) in {"patch", "replan"}:
+            state["critic_b_attempts"] += 1
+
         return state
 
     def export_summary_agent(self, state: PipelineState) -> PipelineState:
