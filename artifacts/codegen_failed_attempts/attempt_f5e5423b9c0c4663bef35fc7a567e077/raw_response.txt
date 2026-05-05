@@ -1,0 +1,197 @@
+import cadquery as cq
+from cadquery import exporters
+from pathlib import Path
+
+COMPONENT_NAME = "corexy_belt_tensioner_bracket"
+
+BASE_WIDTH = 40.0
+BASE_LENGTH = 60.0
+BASE_THICKNESS = 3.0
+
+TAB_WIDTH = 24.0
+TAB_THICKNESS = 6.0
+TAB_HEIGHT = 28.0
+
+M4_CLEARANCE_DIAMETER = 4.5
+SLOT_LENGTH = 16.0
+SLOT_CENTER_HEIGHT_ABOVE_BASE = 17.0
+
+M5_CLEARANCE_DIAMETER = 5.5
+MOUNT_HOLE_X_SPACING = 20.0
+MOUNT_HOLE_Y_OFFSET_FROM_CENTER = -10.0
+
+GUSSET_THICKNESS = 4.0
+GUSSET_RUN = 18.0
+GUSSET_RISE = 18.0
+
+BASE_CORNER_RADIUS = 5.0
+TARGET_CHAMFER = 1.0
+
+EXPORT_STEP_NAME = f"{COMPONENT_NAME}.step"
+
+
+def clamp_corner_radius() -> float:
+    return min(BASE_CORNER_RADIUS, BASE_WIDTH / 2.0 - 0.1, BASE_LENGTH / 2.0 - 0.1)
+
+
+def clamp_chamfer() -> float:
+    min_wall = min(BASE_THICKNESS, TAB_THICKNESS)
+    return min(TARGET_CHAMFER, min_wall / 2.0 - 0.1)
+
+
+def make_y_axis_cylinder(diameter: float, length: float, x: float, y_start: float, z: float) -> cq.Workplane:
+    return (
+        cq.Workplane("XZ")
+        .circle(diameter / 2.0)
+        .extrude(length)
+        .translate((x, y_start, z))
+    )
+
+
+def make_base_plate() -> cq.Workplane:
+    corner_r = clamp_corner_radius()
+    return (
+        cq.Workplane("XY")
+        .rect(BASE_WIDTH - 2.0 * corner_r, BASE_LENGTH)
+        .union(cq.Workplane("XY").rect(BASE_WIDTH, BASE_LENGTH - 2.0 * corner_r))
+        .extrude(BASE_THICKNESS)
+        .translate((0.0, 0.0, BASE_THICKNESS / 2.0))
+    )
+
+
+def make_vertical_tab() -> cq.Workplane:
+    tab_center_y = BASE_LENGTH / 2.0 - TAB_THICKNESS / 2.0
+    tab_center_z = BASE_THICKNESS + TAB_HEIGHT / 2.0
+    return (
+        cq.Workplane("XY")
+        .box(TAB_WIDTH, TAB_THICKNESS, TAB_HEIGHT)
+        .translate((0.0, tab_center_y, tab_center_z))
+    )
+
+
+def make_gusset(x_center: float) -> cq.Workplane:
+    tab_front_y = BASE_LENGTH / 2.0 - TAB_THICKNESS
+    y0 = tab_front_y
+    z0 = BASE_THICKNESS
+    return (
+        cq.Workplane("YZ")
+        .polyline(
+            [
+                (y0, z0),
+                (y0, z0 + GUSSET_RISE),
+                (y0 - GUSSET_RUN, z0),
+            ]
+        )
+        .close()
+        .extrude(GUSSET_THICKNESS)
+        .translate((x_center - GUSSET_THICKNESS / 2.0, 0.0, 0.0))
+    )
+
+
+def make_horizontal_slot_cut() -> cq.Workplane:
+    slot_center_y = BASE_LENGTH / 2.0 - TAB_THICKNESS / 2.0
+    slot_center_z = BASE_THICKNESS + SLOT_CENTER_HEIGHT_ABOVE_BASE
+    cut_length = TAB_THICKNESS + 2.0
+    return make_y_axis_cylinder(
+        diameter=M4_CLEARANCE_DIAMETER,
+        length=cut_length,
+        x=-(SLOT_LENGTH / 2.0),
+        y_start=slot_center_y - cut_length / 2.0,
+        z=slot_center_z,
+    ).union(
+        make_y_axis_cylinder(
+            diameter=M4_CLEARANCE_DIAMETER,
+            length=cut_length,
+            x=(SLOT_LENGTH / 2.0),
+            y_start=slot_center_y - cut_length / 2.0,
+            z=slot_center_z,
+        )
+    ).union(
+        cq.Workplane("XZ")
+        .rect(SLOT_LENGTH, M4_CLEARANCE_DIAMETER)
+        .extrude(cut_length)
+        .translate((0.0, slot_center_y - cut_length / 2.0, slot_center_z))
+    )
+
+
+def make_base_mount_hole(x: float, y: float) -> cq.Workplane:
+    return (
+        cq.Workplane("XY")
+        .circle(M5_CLEARANCE_DIAMETER / 2.0)
+        .extrude(BASE_THICKNESS + 2.0)
+        .translate((x, y, -1.0))
+    )
+
+
+def make_part() -> cq.Workplane:
+    part = make_base_plate()
+    part = part.union(make_vertical_tab())
+
+    left_gusset_x = -(TAB_WIDTH / 2.0 - GUSSET_THICKNESS / 2.0)
+    right_gusset_x = TAB_WIDTH / 2.0 - GUSSET_THICKNESS / 2.0
+
+    part = part.union(make_gusset(left_gusset_x))
+    part = part.union(make_gusset(right_gusset_x))
+
+    part = part.cut(make_horizontal_slot_cut())
+
+    for x in (-MOUNT_HOLE_X_SPACING / 2.0, MOUNT_HOLE_X_SPACING / 2.0):
+        part = part.cut(make_base_mount_hole(x, MOUNT_HOLE_Y_OFFSET_FROM_CENTER))
+
+    chamfer_size = clamp_chamfer()
+    if chamfer_size > 0.0:
+        part = part.edges("|Z").chamfer(chamfer_size)
+        part = part.faces(">Z").edges().chamfer(chamfer_size)
+
+    return part.clean()
+
+
+def validate_geometry(part: cq.Workplane) -> dict:
+    shape = part.val()
+    bb = shape.BoundingBox()
+    volume = shape.Volume()
+
+    expected_width = BASE_WIDTH
+    expected_length = BASE_LENGTH
+    expected_height = BASE_THICKNESS + TAB_HEIGHT
+
+    checks = {
+        "volume_positive": volume > 0.0,
+        "bbox_x_positive": bb.xlen > 0.0,
+        "bbox_y_positive": bb.ylen > 0.0,
+        "bbox_z_positive": bb.zlen > 0.0,
+        "height_matches_expected": abs(bb.zlen - expected_height) < 1.0,
+        "width_at_least_base": bb.xlen >= expected_width - 1.0,
+        "length_at_least_base": bb.ylen >= expected_length - 1.0,
+        "base_thickness_valid": BASE_THICKNESS >= 2.0,
+        "tab_thickness_valid": TAB_THICKNESS >= 2.0,
+        "gusset_clears_slot_height": GUSSET_RISE < SLOT_CENTER_HEIGHT_ABOVE_BASE - M4_CLEARANCE_DIAMETER / 2.0 - 1.0,
+    }
+
+    return {
+        "component": COMPONENT_NAME,
+        "valid": all(checks.values()),
+        "checks": checks,
+        "bounding_box": {
+            "xlen": bb.xlen,
+            "ylen": bb.ylen,
+            "zlen": bb.zlen,
+        },
+        "volume": volume,
+    }
+
+
+def export_all(part: cq.Workplane, output_dir: str = ".") -> list[str]:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    step_path = output_path / EXPORT_STEP_NAME
+    exporters.export(part, str(step_path), exportType="STEP")
+    return [str(step_path)]
+
+
+if __name__ == "__main__":
+    model = make_part()
+    validation = validate_geometry(model)
+    if not validation["valid"]:
+        raise ValueError(f"Geometry validation failed: {validation}")
+    export_all(model, ".")

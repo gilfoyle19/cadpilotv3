@@ -5,8 +5,12 @@ import logging
 from cadpilotv3.agents.execution_validation_agent import ExecutionValidationAgent
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.graph.pipeline_state import PipelineState
+from cadpilotv3.schemas.repair import RepairOutput
 from cadpilotv3.services.cadquery_execution_sandbox_service import CadQueryExecutionSandboxService
-from cadpilotv3.services.code_generation_infill_service import CodeGenerationInfillService
+from cadpilotv3.services.code_generation_infill_service import (
+    CodeGenerationInfillService,
+    CodePatchApplicationError,
+)
 from cadpilotv3.services.critic_checkpoint_a_service import CriticCheckpointAService
 from cadpilotv3.services.critic_checkpoint_b_service import CriticCheckpointBService
 from cadpilotv3.services.export_summary_service import ExportSummaryService
@@ -95,7 +99,9 @@ class PipelineNodes:
             parameters=state["parameters"],
             repair_context=state["repair_decision"],
             critic_feedback=critic_feedback,
-            current_script=state.get("script") if critic_feedback else None,
+            current_script=state.get("script")
+            if critic_feedback or state.get("repair_decision")
+            else None,
         )
 
         state["script"] = implemented_script
@@ -129,11 +135,22 @@ class PipelineNodes:
         state["repair_decision"] = decision
 
         if decision.action == "patch":
-            state["script"] = self.code_generation_infill_service.apply_patch(
-                current_script=state["script"],
-                affected_function=decision.affected_function,
-                patched_code=decision.patched_code,
-            )
+            try:
+                state["script"] = self.code_generation_infill_service.apply_patch(
+                    current_script=state["script"],
+                    affected_function=decision.affected_function,
+                    patched_code=decision.patched_code,
+                )
+            except CodePatchApplicationError as exc:
+                state["repair_decision"] = RepairOutput(
+                    action="regenerate",
+                    root_cause=str(exc),
+                    fix_description=(
+                        "Patch replacement failed, so regenerate the complete "
+                        "script using the current script and validation error."
+                    ),
+                    confidence="medium",
+                )
             state["repair_count"] += 1
 
         return state

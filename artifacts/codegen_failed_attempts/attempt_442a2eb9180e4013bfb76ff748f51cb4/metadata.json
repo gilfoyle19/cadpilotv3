@@ -1,0 +1,5 @@
+{
+  "attempt_number": 2,
+  "max_attempts": 3,
+  "reason": "Code generation returned an empty script"
+}

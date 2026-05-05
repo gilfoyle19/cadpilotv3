@@ -1,11 +1,15 @@
+import json
 from types import SimpleNamespace
 
 import pytest
 
+from cadpilotv3.agents.code_generation_infill_agent import CodeGenerationInfillAgent
 from cadpilotv3.graph.nodes import PipelineNodes
+from cadpilotv3.graph.routing import route_repair
 from cadpilotv3.services.code_generation_infill_service import (
     CodeGenerationInfillService,
     CodeGenerationOutputError,
+    CodePatchApplicationError,
 )
 
 
@@ -115,7 +119,82 @@ def test_codegen_output_guard_rejects_non_cadquery_text() -> None:
         service._validate_generated_code("print('not a cad script')\n")
 
 
-def test_execute_script_retries_after_empty_generation() -> None:
+def test_extract_generated_code_strips_apostrophe_python_fence() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    code = service._extract_generated_code(
+        "'''python\nimport cadquery as cq\nmodel = cq.Workplane('XY').box(1, 1, 1)\n'''"
+    )
+
+    assert code.startswith("import cadquery as cq")
+    assert "'''python" not in code
+
+
+def test_extract_generated_code_strips_unclosed_markdown_python_fence() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    code = service._extract_generated_code(
+        "```python\nimport cadquery as cq\nmodel = cq.Workplane('XY').box(1, 1, 1)"
+    )
+
+    assert code.startswith("import cadquery as cq")
+    assert "```python" not in code
+
+
+def test_extract_generated_code_strips_bare_python_prefix() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    code = service._extract_generated_code(
+        "python\nimport cadquery as cq\nmodel = cq.Workplane('XY').box(1, 1, 1)"
+    )
+
+    assert code.startswith("import cadquery as cq")
+    assert not code.startswith("python")
+
+
+def test_codegen_preflight_rejects_workplane_hole_call() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    with pytest.raises(CodeGenerationOutputError):
+        service._validate_generated_code(
+            "\n".join(
+                [
+                    "import cadquery as cq",
+                    "def build_part():",
+                    "    return cq.Workplane('XY').box(1, 1, 1).faces('>Z').hole(0.5)",
+                    "def validate_geometry(model):",
+                    "    return {}",
+                    "def export_all(model, output_dir='.'):",
+                    "    return []",
+                    "if __name__ == '__main__':",
+                    "    model = build_part()",
+                    "",
+                ]
+            )
+        )
+
+
+def test_apply_patch_raises_when_target_missing() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    with pytest.raises(CodePatchApplicationError):
+        service.apply_patch(
+            current_script="def build_part():\n    return None\n",
+            affected_function="missing_function",
+            patched_code="def missing_function():\n    return None\n",
+        )
+
+
+def test_route_repair_sends_regenerate_to_codegen() -> None:
+    state = {
+        "repair_decision": SimpleNamespace(action="regenerate"),
+        "repair_count": 0,
+    }
+
+    assert route_repair(state) == "code_generation_infill_agent"
+
+
+def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
     class FakeAgent:
         def __init__(self) -> None:
             self.calls = []
@@ -124,9 +203,23 @@ def test_execute_script_retries_after_empty_generation() -> None:
             self.calls.append(kwargs)
             if len(self.calls) == 1:
                 return "```python\n\n```"
-            return "import cadquery as cq\nmodel = cq.Workplane('XY').box(1, 1, 1)\n"
+            return "\n".join(
+                [
+                    "import cadquery as cq",
+                    "def build_part():",
+                    "    return cq.Workplane('XY').box(1, 1, 1)",
+                    "def validate_geometry(model):",
+                    "    return {}",
+                    "def export_all(model, output_dir='.'):",
+                    "    return []",
+                    "if __name__ == '__main__':",
+                    "    model = build_part()",
+                    "",
+                ]
+            )
 
     service = object.__new__(CodeGenerationInfillService)
+    service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
     service.agent = FakeAgent()
 
     script = service.execute_script(
@@ -141,3 +234,175 @@ def test_execute_script_retries_after_empty_generation() -> None:
     assert service.agent.calls[1]["generation_feedback"] == (
         "Code generation returned an empty script"
     )
+    assert service.agent.calls[1]["compact_retry"] is True
+
+
+def test_execute_script_persists_raw_failed_codegen_response(tmp_path) -> None:
+    class FakeAgent:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    text="```python\n\n```",
+                    response_metadata={"finish_reason": "stop"},
+                    usage_metadata={"output_tokens": 3},
+                    response_id="response-1",
+                    raw_response_repr="<fake response>",
+                )
+            return "\n".join(
+                [
+                    "import cadquery as cq",
+                    "def build_part():",
+                    "    return cq.Workplane('XY').box(1, 1, 1)",
+                    "def validate_geometry(model):",
+                    "    return {}",
+                    "def export_all(model, output_dir='.'):",
+                    "    return []",
+                    "if __name__ == '__main__':",
+                    "    model = build_part()",
+                    "",
+                ]
+            )
+
+    service = object.__new__(CodeGenerationInfillService)
+    service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
+    service.agent = FakeAgent()
+
+    service.execute_script(
+        spec=SimpleNamespace(component="test_part"),
+        geometry_plan=object(),
+        parameters=object(),
+    )
+
+    failed_attempts = list((tmp_path / "codegen_failed_attempts").iterdir())
+    assert len(failed_attempts) == 1
+    attempt_dir = failed_attempts[0]
+    assert (attempt_dir / "raw_response.txt").read_text(encoding="utf-8") == (
+        "```python\n\n```"
+    )
+    assert not (attempt_dir / "generated_script.py").read_text(encoding="utf-8").strip()
+
+    metadata = json.loads((attempt_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["response_metadata"] == {"finish_reason": "stop"}
+    assert metadata["usage_metadata"] == {"output_tokens": 3}
+    assert metadata["raw_response_length_chars"] == len("```python\n\n```")
+    assert metadata["extracted_script_length_chars"] == 1
+    assert metadata["compact_retry_next"] is True
+
+
+def test_codegen_selects_relevant_few_shots() -> None:
+    agent = object.__new__(CodeGenerationInfillAgent)
+    few_shots = """
+## Examples
+
+### Static Example 1 - Micro Servo Bracket
+INPUT: servo bracket
+OUTPUT: servo code
+
+### Static Example 2 - 608 Bearing Pillow Block
+INPUT: bearing pillow block
+OUTPUT: bearing code
+
+### Static Example 3 - Electronics Lid
+INPUT: electronics lid
+OUTPUT: lid code
+"""
+
+    selected = agent._select_relevant_examples(
+        few_shot_prompt=few_shots,
+        spec=SimpleNamespace(
+            component="bearing_pillow_block_608",
+            component_type="single_part",
+            style="solid_block",
+            manufacturing_process="CNC",
+            approximate_scale="small",
+            parts=["central_bearing_boss", "press_fit_bearing_seat"],
+            constraints=["through_holes_only"],
+        ),
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[
+                SimpleNamespace(
+                    name="central_bearing_boss",
+                    modeling_strategy="primitive_csg",
+                    key_features=[
+                        SimpleNamespace(feature="bearing_seat"),
+                    ],
+                )
+            ],
+        ),
+        max_examples=1,
+    )
+
+    assert "608 Bearing Pillow Block" in selected
+    assert "Micro Servo Bracket" not in selected
+
+
+def test_codegen_selects_relevant_cheatsheet_blocks() -> None:
+    agent = object.__new__(CodeGenerationInfillAgent)
+    cheatsheet = """
+cadquery_cheatsheet:
+"All dimensions are in mm"
+
+**Rule**: Import CadQuery.
+**Method**:
+```python
+import cadquery as cq
+```
+
+**Rule**: Use when user wants to create a rectangular box solid.
+**Method**:
+```python
+.box(length, width, height)
+```
+
+**Rule**: Use when user wants to draw decorative text.
+**Method**:
+```python
+.text(txt, fontsize, distance)
+```
+
+**Rule**: Use when the user wants to create a slot.
+**Method**:
+```python
+.slot2D(length, diameter)
+```
+
+**Rule**: Use when user wants to add a chamfer.
+**Method**:
+```python
+.chamfer(d)
+```
+"""
+
+    selected = agent._select_relevant_cheatsheet(
+        cheatsheet=cheatsheet,
+        spec=SimpleNamespace(
+            component="belt_tensioner_bracket",
+            component_type="single_part",
+            style="lightweight_structural",
+            manufacturing_process="FDM",
+            approximate_scale="small",
+            parts=["base_plate", "vertical_tab", "m4_slot", "gussets"],
+            constraints=["chamfered_edges"],
+        ),
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[
+                SimpleNamespace(
+                    name="vertical_tab_with_slot",
+                    modeling_strategy="primitive_csg",
+                    key_features=[SimpleNamespace(feature="m4_slot")],
+                )
+            ],
+        ),
+        max_blocks=5,
+    )
+
+    assert ".box(length, width, height)" in selected
+    assert ".slot2D(length, diameter)" in selected
+    assert ".chamfer(d)" in selected
+    assert ".text(txt, fontsize, distance)" not in selected

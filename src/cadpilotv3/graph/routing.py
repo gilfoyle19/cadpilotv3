@@ -37,6 +37,7 @@ def route_repair(
     state: PipelineState,
 ) -> Literal[
     "execution_validation_node",
+    "code_generation_infill_agent",
     "geometry_planner_agent",
     "critic_checkpoint_b",
 ]:
@@ -48,6 +49,9 @@ def route_repair(
 
     if decision.action == "patch":
         return "execution_validation_node"
+
+    if decision.action == "regenerate":
+        return "code_generation_infill_agent"
 
     if decision.action == "replan":
         return "geometry_planner_agent"

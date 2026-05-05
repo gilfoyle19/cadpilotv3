@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -15,6 +16,15 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMResponseValidationError(ValueError):
     """Raised when model output cannot be validated against a schema."""
+
+
+@dataclass(frozen=True)
+class LLMTextResult:
+    text: str
+    response_metadata: dict[str, Any]
+    usage_metadata: dict[str, Any] | None
+    response_id: str | None
+    raw_response_repr: str
 
 
 def get_message_text(response: Any) -> str:
@@ -36,8 +46,63 @@ def get_message_text(response: Any) -> str:
 
 
 def invoke_text(llm: Any, prompt: str) -> str:
+    return invoke_text_with_metadata(llm, prompt).text
+
+
+def invoke_text_with_metadata(llm: Any, prompt: str) -> LLMTextResult:
     response = llm.invoke(prompt)
-    return get_message_text(response)
+    response_metadata = getattr(response, "response_metadata", None)
+    usage_metadata = getattr(response, "usage_metadata", None)
+    response_id = getattr(response, "id", None)
+
+    if response_metadata is not None and not isinstance(response_metadata, dict):
+        response_metadata = {"value": str(response_metadata)}
+    if usage_metadata is not None and not isinstance(usage_metadata, dict):
+        usage_metadata = {"value": str(usage_metadata)}
+
+    return LLMTextResult(
+        text=get_message_text(response),
+        response_metadata=response_metadata or {},
+        usage_metadata=usage_metadata,
+        response_id=str(response_id) if response_id is not None else None,
+        raw_response_repr=repr(response),
+    )
+
+
+def coerce_llm_text_result(response: Any) -> LLMTextResult:
+    if isinstance(response, LLMTextResult):
+        return response
+
+    if hasattr(response, "text"):
+        text_value = response.text
+        if callable(text_value):
+            text_value = text_value()
+
+        response_metadata = getattr(response, "response_metadata", None)
+        usage_metadata = getattr(response, "usage_metadata", None)
+        response_id = getattr(response, "response_id", getattr(response, "id", None))
+        raw_response_repr = getattr(response, "raw_response_repr", repr(response))
+
+        if response_metadata is not None and not isinstance(response_metadata, dict):
+            response_metadata = {"value": str(response_metadata)}
+        if usage_metadata is not None and not isinstance(usage_metadata, dict):
+            usage_metadata = {"value": str(usage_metadata)}
+
+        return LLMTextResult(
+            text=str(text_value),
+            response_metadata=response_metadata or {},
+            usage_metadata=usage_metadata,
+            response_id=str(response_id) if response_id is not None else None,
+            raw_response_repr=str(raw_response_repr),
+        )
+
+    return LLMTextResult(
+        text=str(response),
+        response_metadata={},
+        usage_metadata=None,
+        response_id=None,
+        raw_response_repr=repr(response),
+    )
 
 
 def invoke_json(llm: Any, prompt: str) -> dict[str, Any] | list[Any]:

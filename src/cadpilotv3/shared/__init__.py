@@ -6,10 +6,13 @@ from cadpilotv3.shared.json_utils import (
 )
 from cadpilotv3.shared.llm_utils import (
     LLMResponseValidationError,
+    LLMTextResult,
+    coerce_llm_text_result,
     get_message_text,
     invoke_json,
     invoke_pydantic,
     invoke_text,
+    invoke_text_with_metadata,
 )
 from cadpilotv3.shared.path_utils import (
     ensure_dir,
@@ -33,10 +36,13 @@ __all__ = [
     "parse_json",
     "strip_code_fences",
     "LLMResponseValidationError",
+    "LLMTextResult",
+    "coerce_llm_text_result",
     "get_message_text",
     "invoke_json",
     "invoke_pydantic",
     "invoke_text",
+    "invoke_text_with_metadata",
     "ensure_dir",
     "get_artifacts_dir",
     "get_logs_dir",

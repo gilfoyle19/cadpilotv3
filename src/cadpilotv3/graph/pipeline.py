@@ -58,6 +58,7 @@ def build_pipeline(settings: AppSettings):
         route_repair,
         {
             "execution_validation_node": "execution_validation_node",
+            "code_generation_infill_agent": "code_generation_infill_agent",
             "geometry_planner_agent": "geometry_planner_agent",
             "critic_checkpoint_b": "critic_checkpoint_b",
         },

@@ -1,0 +1,29 @@
+{
+  "attempt_number": 1,
+  "max_attempts": 3,
+  "reason": "Generated script must define build_part() or build_assembly()",
+  "raw_response_length_chars": 5459,
+  "extracted_script_length_chars": 5460,
+  "response_metadata": {
+    "finish_reason": "stop",
+    "model_name": "gpt-5.4-2026-03-05",
+    "service_tier": "default",
+    "model_provider": "openai"
+  },
+  "usage_metadata": {
+    "input_tokens": 8813,
+    "output_tokens": 1779,
+    "total_tokens": 10592,
+    "input_token_details": {
+      "audio": 0,
+      "cache_read": 3840
+    },
+    "output_token_details": {
+      "audio": 0,
+      "reasoning": 0
+    }
+  },
+  "response_id": "lc_run--019df7be-ce03-7ff2-8e54-ef7344420519",
+  "compact_retry_next": false,
+  "raw_response_repr": "AIMessage(content='import cadquery as cq\\nfrom cadquery import exporters\\nfrom pathlib import Path\\n\\nCOMPONENT_NAME = \"corexy_belt_tensioner_bracket\"\\n\\nBASE_W = 24.0\\nBASE_L = 60.0\\nBASE_T = 3.0\\n\\nTAB_W = 24.0\\nTAB_T = 3.0\\nTAB_H = 28.0\\n\\nMIN_WALL = 3.0\\nBASE_CORNER_R = 3.0\\n\\nM5_CLEAR_D = 5.5\\nM5_HOLE_SPACING_X = 20.0\\nM5_HOLE_Y_OFFSET_FROM_BACK = 14.0\\n\\nM4_CLEAR_D = 4.3\\nSLOT_LEN = 12.0\\nSLOT_CENTER_Z = BASE_T + TAB_H / 2.0\\n\\nGUSSET_T = 3.0\\nGUSSET_REACH_Y = 14.0\\nGUSSET_RISE_Z = 16.0\\nGUSSET_INSET_FROM_SIDE = 1.5\\n\\nTOP_CHAMFER = 0.6\\n\\nTAB_CENTER_Y = BASE_L / 2.0 - TAB_T / 2.0\\nTAB_FRONT_Y = BASE_L / 2.0\\nTAB_BACK_Y = TAB_CENTER_Y - TAB_T / 2.0\\nBASE_BACK_Y = -BASE_L / 2.0\\nM5_HOLE_Y = BASE_BACK_Y + M5_HOLE_Y_OFFSET_FROM_BACK\\n\\nSAFE_BASE_CORNER_R = min(BASE_CORNER_R, BASE_W / 2.0 - 0.5, BASE_L / 2.0 - 0.5)\\nSAFE_TOP_CHAMFER = min(TOP_CHAMFER, BASE_T / 2.0 - 0.1, TAB_T / 2.0 - 0.1)\\nSLOT_END_RADIUS = M4_CLEAR_D / 2.0\\n\\n\\ndef make_y_axis_cylinder(diameter: float, length: float, x: float, y_start: float, z: float) -> cq.Workplane:\\n    return (\\n        cq.Workplane(\"XZ\")\\n        .circle(diameter / 2.0)\\n        .extrude(length)\\n        .translate((x, y_start, z))\\n    )\\n\\n\\ndef make_rounded_base_plate() -> cq.Workplane:\\n    plate = (\\n        cq.Workplane(\"XY\")\\n        .rect(BASE_W - 2.0 * SAFE_BASE_CORNER_R, BASE_L)\\n        .extrude(BASE_T)\\n    )\\n    side_add = (\\n        cq.Workplane(\"XY\")\\n        .rect(BASE_W, BASE_L - 2.0 * SAFE_BASE_CORNER_R)\\n        .extrude(BASE_T)\\n    )\\n    return plate.union(side_add).clean()\\n\\n\\ndef make_vertical_tab() -> cq.Workplane:\\n    return (\\n        cq.Workplane(\"XY\")\\n        .box(TAB_W, TAB_T, TAB_H)\\n        .translate((0.0, TAB_CENTER_Y, BASE_T + TAB_H / 2.0))\\n    )\\n\\n\\ndef make_left_gusset() -> cq.Workplane:\\n    x_center = -(TAB_W / 2.0 - GUSSET_T / 2.0 - GUSSET_INSET_FROM_SIDE)\\n    return (\\n        cq.Workplane(\"YZ\")\\n        .polyline(\\n            [\\n                (TAB_BACK_Y - GUSSET_REACH_Y, BASE_T),\\n                (TAB_BACK_Y + 0.2, BASE_T),\\n                (TAB_BACK_Y + 0.2, BASE_T + GUSSET_RISE_Z),\\n            ]\\n        )\\n        .close()\\n        .extrude(GUSSET_T)\\n        .translate((x_center - GUSSET_T / 2.0, 0.0, 0.0))\\n    )\\n\\n\\ndef make_right_gusset() -> cq.Workplane:\\n    return make_left_gusset().mirror(\"YZ\")\\n\\n\\ndef make_m4_slot_cutter() -> cq.Workplane:\\n    slot_y_start = TAB_CENTER_Y - TAB_T / 2.0 - 1.0\\n    slot_length_y = TAB_T + 2.0\\n    left_end = -SLOT_LEN / 2.0\\n    right_end = SLOT_LEN / 2.0\\n\\n    center_rect = (\\n        cq.Workplane(\"YZ\")\\n        .center(0.0, SLOT_CENTER_Z)\\n        .rect(SLOT_LEN, M4_CLEAR_D)\\n        .extrude(slot_length_y)\\n        .translate((0.0, slot_y_start, 0.0))\\n    )\\n\\n    left_cap = make_y_axis_cylinder(M4_CLEAR_D, slot_length_y, left_end, slot_y_start, SLOT_CENTER_Z)\\n    right_cap = make_y_axis_cylinder(M4_CLEAR_D, slot_length_y, right_end, slot_y_start, SLOT_CENTER_Z)\\n\\n    return center_rect.union(left_cap).union(right_cap).clean()\\n\\n\\ndef make_m5_hole_cutter(x: float, y: float) -> cq.Workplane:\\n    return (\\n        cq.Workplane(\"XY\")\\n        .circle(M5_CLEAR_D / 2.0)\\n        .extrude(BASE_T + 2.0)\\n        .translate((x, y, -1.0))\\n    )\\n\\n\\ndef make_bracket() -> cq.Workplane:\\n    base_plate = make_rounded_base_plate()\\n    vertical_tab = make_vertical_tab()\\n    left_gusset = make_left_gusset()\\n    right_gusset = make_right_gusset()\\n\\n    bracket = base_plate.union(vertical_tab).union(left_gusset).union(right_gusset).clean()\\n\\n    bracket = bracket.cut(make_m4_slot_cutter())\\n\\n    for x in (-M5_HOLE_SPACING_X / 2.0, M5_HOLE_SPACING_X / 2.0):\\n        bracket = bracket.cut(make_m5_hole_cutter(x, M5_HOLE_Y))\\n\\n    if SAFE_TOP_CHAMFER > 0.0:\\n        bracket = bracket.faces(\">Z\").edges().chamfer(SAFE_TOP_CHAMFER)\\n\\n    return bracket.clean()\\n\\n\\ndef validate_geometry(part: cq.Workplane) -> dict:\\n    shape = part.val()\\n    bb = shape.BoundingBox()\\n    volume = shape.Vo"
+}

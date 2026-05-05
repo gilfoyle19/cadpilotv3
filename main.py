@@ -69,7 +69,7 @@ def main() -> None:
     )
 
     user_prompt = (
-        "Design a single-piece bearing pillow block for a 608 bearing. Use mm units and export as STEP. The part will be CNC machined from aluminum. Include a rectangular base with two M6 through holes, a raised central bearing boss, and a circular bearing seat sized for a press-fit 608 bearing. Avoid internal undercuts, keep all holes through-drilled from accessible faces, and include small chamfers on external edges. The design should be a solid structural block, approximately 80mm long, 35mm wide, and 35mm tall."
+        "Design a single-piece FDM-printable belt tensioner bracket for a small CoreXY-style 3D printer. Use mm units and export as STEP. The part should mount to a 20x20 aluminum extrusion using two M5 through holes spaced 20mm apart. Include a vertical tab with a horizontal slot for an M4 tensioning screw, sized so the screw can slide about 12mm for belt adjustment. Add two triangular gussets between the base and vertical tab for stiffness, placed outboard so they do not interfere with the M5 holes or the M4 slot. Keep the part compact, with minimum 3mm wall thickness, rounded outside corners, small chamfers on accessible edges, and a flat print base. The design should be a static single-piece bracket with no moving joints."
     )
 
     try:

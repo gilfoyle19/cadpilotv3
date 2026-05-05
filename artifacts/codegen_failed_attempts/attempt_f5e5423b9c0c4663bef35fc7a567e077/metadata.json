@@ -1,0 +1,29 @@
+{
+  "attempt_number": 1,
+  "max_attempts": 3,
+  "reason": "Generated script must define build_part() or build_assembly()",
+  "raw_response_length_chars": 5713,
+  "extracted_script_length_chars": 5714,
+  "response_metadata": {
+    "finish_reason": "stop",
+    "model_name": "gpt-5.4-2026-03-05",
+    "service_tier": "default",
+    "model_provider": "openai"
+  },
+  "usage_metadata": {
+    "input_tokens": 8402,
+    "output_tokens": 1736,
+    "total_tokens": 10138,
+    "input_token_details": {
+      "audio": 0,
+      "cache_read": 0
+    },
+    "output_token_details": {
+      "audio": 0,
+      "reasoning": 0
+    }
+  },
+  "response_id": "lc_run--019df7bb-848a-78a1-8aa1-ec6134bb23ac",
+  "compact_retry_next": false,
+  "raw_response_repr": "AIMessage(content='import cadquery as cq\\nfrom cadquery import exporters\\nfrom pathlib import Path\\n\\nCOMPONENT_NAME = \"corexy_belt_tensioner_bracket\"\\n\\nBASE_WIDTH = 40.0\\nBASE_LENGTH = 60.0\\nBASE_THICKNESS = 3.0\\n\\nTAB_WIDTH = 24.0\\nTAB_THICKNESS = 6.0\\nTAB_HEIGHT = 28.0\\n\\nM4_CLEARANCE_DIAMETER = 4.5\\nSLOT_LENGTH = 16.0\\nSLOT_CENTER_HEIGHT_ABOVE_BASE = 17.0\\n\\nM5_CLEARANCE_DIAMETER = 5.5\\nMOUNT_HOLE_X_SPACING = 20.0\\nMOUNT_HOLE_Y_OFFSET_FROM_CENTER = -10.0\\n\\nGUSSET_THICKNESS = 4.0\\nGUSSET_RUN = 18.0\\nGUSSET_RISE = 18.0\\n\\nBASE_CORNER_RADIUS = 5.0\\nTARGET_CHAMFER = 1.0\\n\\nEXPORT_STEP_NAME = f\"{COMPONENT_NAME}.step\"\\n\\n\\ndef clamp_corner_radius() -> float:\\n    return min(BASE_CORNER_RADIUS, BASE_WIDTH / 2.0 - 0.1, BASE_LENGTH / 2.0 - 0.1)\\n\\n\\ndef clamp_chamfer() -> float:\\n    min_wall = min(BASE_THICKNESS, TAB_THICKNESS)\\n    return min(TARGET_CHAMFER, min_wall / 2.0 - 0.1)\\n\\n\\ndef make_y_axis_cylinder(diameter: float, length: float, x: float, y_start: float, z: float) -> cq.Workplane:\\n    return (\\n        cq.Workplane(\"XZ\")\\n        .circle(diameter / 2.0)\\n        .extrude(length)\\n        .translate((x, y_start, z))\\n    )\\n\\n\\ndef make_base_plate() -> cq.Workplane:\\n    corner_r = clamp_corner_radius()\\n    return (\\n        cq.Workplane(\"XY\")\\n        .rect(BASE_WIDTH - 2.0 * corner_r, BASE_LENGTH)\\n        .union(cq.Workplane(\"XY\").rect(BASE_WIDTH, BASE_LENGTH - 2.0 * corner_r))\\n        .extrude(BASE_THICKNESS)\\n        .translate((0.0, 0.0, BASE_THICKNESS / 2.0))\\n    )\\n\\n\\ndef make_vertical_tab() -> cq.Workplane:\\n    tab_center_y = BASE_LENGTH / 2.0 - TAB_THICKNESS / 2.0\\n    tab_center_z = BASE_THICKNESS + TAB_HEIGHT / 2.0\\n    return (\\n        cq.Workplane(\"XY\")\\n        .box(TAB_WIDTH, TAB_THICKNESS, TAB_HEIGHT)\\n        .translate((0.0, tab_center_y, tab_center_z))\\n    )\\n\\n\\ndef make_gusset(x_center: float) -> cq.Workplane:\\n    tab_front_y = BASE_LENGTH / 2.0 - TAB_THICKNESS\\n    y0 = tab_front_y\\n    z0 = BASE_THICKNESS\\n    return (\\n        cq.Workplane(\"YZ\")\\n        .polyline(\\n            [\\n                (y0, z0),\\n                (y0, z0 + GUSSET_RISE),\\n                (y0 - GUSSET_RUN, z0),\\n            ]\\n        )\\n        .close()\\n        .extrude(GUSSET_THICKNESS)\\n        .translate((x_center - GUSSET_THICKNESS / 2.0, 0.0, 0.0))\\n    )\\n\\n\\ndef make_horizontal_slot_cut() -> cq.Workplane:\\n    slot_center_y = BASE_LENGTH / 2.0 - TAB_THICKNESS / 2.0\\n    slot_center_z = BASE_THICKNESS + SLOT_CENTER_HEIGHT_ABOVE_BASE\\n    cut_length = TAB_THICKNESS + 2.0\\n    return make_y_axis_cylinder(\\n        diameter=M4_CLEARANCE_DIAMETER,\\n        length=cut_length,\\n        x=-(SLOT_LENGTH / 2.0),\\n        y_start=slot_center_y - cut_length / 2.0,\\n        z=slot_center_z,\\n    ).union(\\n        make_y_axis_cylinder(\\n            diameter=M4_CLEARANCE_DIAMETER,\\n            length=cut_length,\\n            x=(SLOT_LENGTH / 2.0),\\n            y_start=slot_center_y - cut_length / 2.0,\\n            z=slot_center_z,\\n        )\\n    ).union(\\n        cq.Workplane(\"XZ\")\\n        .rect(SLOT_LENGTH, M4_CLEARANCE_DIAMETER)\\n        .extrude(cut_length)\\n        .translate((0.0, slot_center_y - cut_length / 2.0, slot_center_z))\\n    )\\n\\n\\ndef make_base_mount_hole(x: float, y: float) -> cq.Workplane:\\n    return (\\n        cq.Workplane(\"XY\")\\n        .circle(M5_CLEARANCE_DIAMETER / 2.0)\\n        .extrude(BASE_THICKNESS + 2.0)\\n        .translate((x, y, -1.0))\\n    )\\n\\n\\ndef make_part() -> cq.Workplane:\\n    part = make_base_plate()\\n    part = part.union(make_vertical_tab())\\n\\n    left_gusset_x = -(TAB_WIDTH / 2.0 - GUSSET_THICKNESS / 2.0)\\n    right_gusset_x = TAB_WIDTH / 2.0 - GUSSET_THICKNESS / 2.0\\n\\n    part = part.union(make_gusset(left_gusset_x))\\n    part = part.union(make_gusset(right_gusset_x))\\n\\n    part = part.cut(make_horizontal_slot_cut())\\n\\n    for x in (-MOUNT_HOLE_X_SPACING / 2.0, MOUNT_HOLE_X_SPACING / 2.0):\\n        part = part.cut(make_base_mount_hole(x, MOUNT_HOLE_Y_OFFSET_FROM_CEN"
+}
