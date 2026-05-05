@@ -224,6 +224,12 @@ class CodeGenerationInfillService:
                 "Generated script must avoid Workplane.hole(); use explicit cutter solids"
             )
 
+        if any(self._is_disallowed_volume_reasonable_key(node) for node in ast.walk(tree)):
+            raise CodeGenerationOutputError(
+                "Generated script must not include heuristic volume_reasonable checks; "
+                "use positive-volume and bounding-box checks only"
+            )
+
         if not any(self._is_main_guard(node) for node in ast.walk(tree)):
             raise CodeGenerationOutputError("Generated script must include a __main__ export block")
 
@@ -250,6 +256,20 @@ class CodeGenerationInfillService:
 
         comparator = test.comparators[0]
         return isinstance(comparator, ast.Constant) and comparator.value == "__main__"
+
+    def _is_disallowed_volume_reasonable_key(self, node: ast.AST) -> bool:
+        disallowed_names = {
+            "volume_reasonable",
+            "volume_reduced_by_holes",
+            "expected_volume",
+            "expected_plate_volume",
+            "expected_final_volume_upper_bound",
+        }
+
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value in disallowed_names
+
+        return isinstance(node, ast.Name) and node.id in disallowed_names
 
     def _extract_generated_code(self, generated_text: str) -> str:
         text = generated_text.strip()

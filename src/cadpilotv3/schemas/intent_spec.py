@@ -20,6 +20,8 @@ class IntentSpec(BaseModel):
     style: str | None = None
     manufacturing_process: str | None = None
     constraints: list[str] = Field(default_factory=list)
+    explicit_dimensions: list[str] = Field(default_factory=list)
+    explicit_constraints: list[str] = Field(default_factory=list)
 
     clarifications_needed: list[str] = Field(default_factory=list)
 
@@ -32,7 +34,14 @@ class IntentSpec(BaseModel):
             return [value]
         return value
 
-    @field_validator("parts", "constraints", "clarifications_needed", mode="before")
+    @field_validator(
+        "parts",
+        "constraints",
+        "explicit_dimensions",
+        "explicit_constraints",
+        "clarifications_needed",
+        mode="before",
+    )
     @classmethod
     def _normalize_list_fields(cls, value):
         if value is None:

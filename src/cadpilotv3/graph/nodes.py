@@ -79,7 +79,10 @@ class PipelineNodes:
 
     def parameter_agent(self, state: PipelineState) -> PipelineState:
         state["parameters"] = self.parameter_service.execute(
+            user_prompt=state["user_prompt"],
+            spec=state["spec"],
             geometry_plan=state["geometry_plan"],
+            critic_a_report=state.get("critic_a_report"),
         )
         return state
 

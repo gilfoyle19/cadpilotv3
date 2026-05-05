@@ -174,6 +174,28 @@ def test_codegen_preflight_rejects_workplane_hole_call() -> None:
         )
 
 
+def test_codegen_preflight_rejects_volume_reasonable_heuristic() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    with pytest.raises(CodeGenerationOutputError, match="volume_reasonable"):
+        service._validate_generated_code(
+            "\n".join(
+                [
+                    "import cadquery as cq",
+                    "def build_part():",
+                    "    return cq.Workplane('XY').box(1, 1, 1)",
+                    "def validate_geometry(model):",
+                    "    return {'volume_reasonable': True}",
+                    "def export_all(model, output_dir='.'):",
+                    "    return []",
+                    "if __name__ == '__main__':",
+                    "    model = build_part()",
+                    "",
+                ]
+            )
+        )
+
+
 def test_apply_patch_raises_when_target_missing() -> None:
     service = object.__new__(CodeGenerationInfillService)
 

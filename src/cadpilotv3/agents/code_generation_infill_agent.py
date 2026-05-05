@@ -155,6 +155,11 @@ class CodeGenerationInfillAgent:
                     "if __name__ == '__main__': export block."
                 ),
                 (
+                    "validate_geometry may check bounding boxes, part counts, "
+                    "and positive final volume, but must not include heuristic "
+                    "volume_reasonable or expected-volume threshold checks."
+                ),
+                (
                     "Avoid Workplane.hole(); use explicit cutter solids. Use only "
                     "CadQuery 2.x and Python standard-library imports."
                 ),

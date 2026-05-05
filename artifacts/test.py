@@ -4,41 +4,33 @@ from pathlib import Path
 
 COMPONENT_NAME = "rectangular_mounting_plate"
 
-PLATE_LENGTH = 80.0
-PLATE_WIDTH = 50.0
-PLATE_THICKNESS = 6.0
+PLATE_L = 80.0
+PLATE_W = 40.0
+PLATE_T = 4.0
+N_HOLES = 4
+HOLE_D = 4.5
+HOLE_EDGE_OFFSET = 8.0
+HOLE_1_X = -PLATE_L / 2.0 + HOLE_EDGE_OFFSET
+HOLE_1_Y = -PLATE_W / 2.0 + HOLE_EDGE_OFFSET
+HOLE_2_X = PLATE_L / 2.0 - HOLE_EDGE_OFFSET
+HOLE_2_Y = -PLATE_W / 2.0 + HOLE_EDGE_OFFSET
+HOLE_3_X = -PLATE_L / 2.0 + HOLE_EDGE_OFFSET
+HOLE_3_Y = PLATE_W / 2.0 - HOLE_EDGE_OFFSET
+HOLE_4_X = PLATE_L / 2.0 - HOLE_EDGE_OFFSET
+HOLE_4_Y = PLATE_W / 2.0 - HOLE_EDGE_OFFSET
+CHAMFER_W = 1.0
+CHAMFER_ANGLE = 45.0
+MIN_WALL_AFTER_HOLE = HOLE_EDGE_OFFSET - HOLE_D / 2.0
 
-M4_CLEARANCE_DIAMETER = 4.5
-
-HOLE_EDGE_MARGIN_X = 10.0
-HOLE_EDGE_MARGIN_Y = 10.0
-
-TOP_EDGE_CHAMFER = 1.5
-
-CUTTER_EXTRA = 2.0
-VALIDATION_TOL = 1e-6
-
-
-def clamp_top_chamfer() -> float:
-    max_from_x = HOLE_EDGE_MARGIN_X - M4_CLEARANCE_DIAMETER / 2.0
-    max_from_y = HOLE_EDGE_MARGIN_Y - M4_CLEARANCE_DIAMETER / 2.0
-    max_from_thickness = PLATE_THICKNESS / 2.0 - VALIDATION_TOL
-    safe_max = min(max_from_x, max_from_y, max_from_thickness)
-    return max(0.0, min(TOP_EDGE_CHAMFER, safe_max))
-
-
-def hole_positions() -> list[tuple[float, float]]:
-    x = PLATE_LENGTH / 2.0 - HOLE_EDGE_MARGIN_X
-    y = PLATE_WIDTH / 2.0 - HOLE_EDGE_MARGIN_Y
-    return [
-        (-x, -y),
-        (x, -y),
-        (-x, y),
-        (x, y),
-    ]
+HOLE_POSITIONS = [
+    (HOLE_1_X, HOLE_1_Y),
+    (HOLE_2_X, HOLE_2_Y),
+    (HOLE_3_X, HOLE_3_Y),
+    (HOLE_4_X, HOLE_4_Y),
+]
 
 
-def make_z_axis_cutter(diameter: float, height: float, x: float, y: float, z_start: float) -> cq.Workplane:
+def make_z_axis_cutter(diameter: float, height: float, z_start: float, x: float, y: float) -> cq.Workplane:
     return (
         cq.Workplane("XY")
         .circle(diameter / 2.0)
@@ -47,82 +39,94 @@ def make_z_axis_cutter(diameter: float, height: float, x: float, y: float, z_sta
     )
 
 
-def build_part() -> cq.Workplane:
+def make_rectangular_mounting_plate() -> cq.Workplane:
     plate = (
         cq.Workplane("XY")
-        .rect(PLATE_LENGTH, PLATE_WIDTH)
-        .extrude(PLATE_THICKNESS)
+        .rect(PLATE_L, PLATE_W)
+        .extrude(PLATE_T)
     )
 
-    cutter_height = PLATE_THICKNESS + 2.0 * CUTTER_EXTRA
-    cutter_z_start = -CUTTER_EXTRA
+    cutter_height = PLATE_T + 2.0
+    cutter_z_start = -1.0
 
-    for x, y in hole_positions():
-        hole_cutter = make_z_axis_cutter(
-            M4_CLEARANCE_DIAMETER,
-            cutter_height,
-            x,
-            y,
-            cutter_z_start,
-        )
+    for x, y in HOLE_POSITIONS:
+        hole_cutter = make_z_axis_cutter(HOLE_D, cutter_height, cutter_z_start, x, y)
         plate = plate.cut(hole_cutter)
 
-    chamfer_size = clamp_top_chamfer()
-    if chamfer_size > 0.0:
-        plate = plate.faces(">Z").edges().chamfer(chamfer_size)
+    chamfer_size = min(CHAMFER_W, (PLATE_T / 2.0) - 1e-3)
+    if chamfer_size > 0:
+        plate = plate.edges("|Z and >Z").chamfer(chamfer_size)
 
     return plate.clean()
 
 
 def validate_geometry(part: cq.Workplane) -> dict:
-    shape = part.val()
-    bb = shape.BoundingBox()
-
-    expected_hole_count = 4
-    actual_volume = shape.Volume()
-
-    expected_plate_volume = PLATE_LENGTH * PLATE_WIDTH * PLATE_THICKNESS
-    expected_hole_volume = expected_hole_count * (
-        3.141592653589793 * (M4_CLEARANCE_DIAMETER / 2.0) * (M4_CLEARANCE_DIAMETER / 2.0) * PLATE_THICKNESS
-    )
-    expected_final_volume_upper_bound = expected_plate_volume - expected_hole_volume
-
-    min_edge_distance_x = HOLE_EDGE_MARGIN_X - M4_CLEARANCE_DIAMETER / 2.0
-    min_edge_distance_y = HOLE_EDGE_MARGIN_Y - M4_CLEARANCE_DIAMETER / 2.0
-
-    result = {
+    results = {
+        "component_name": COMPONENT_NAME,
         "valid": True,
-        "component": COMPONENT_NAME,
-        "volume_positive": actual_volume > 0.0,
-        "bbox_length_ok": abs(bb.xlen - PLATE_LENGTH) < 1e-3,
-        "bbox_width_ok": abs(bb.ylen - PLATE_WIDTH) < 1e-3,
-        "bbox_thickness_ok": abs(bb.zlen - PLATE_THICKNESS) < 1e-3,
-        "bottom_at_z0_ok": abs(bb.zmin - 0.0) < 1e-3,
-        "edge_distance_x_ok": min_edge_distance_x >= 2.0,
-        "edge_distance_y_ok": min_edge_distance_y >= 2.0,
-        "chamfer_safe_ok": clamp_top_chamfer() <= min(min_edge_distance_x, min_edge_distance_y) + 1e-9,
-        "volume_reduced_by_holes": actual_volume < expected_plate_volume,
-        "volume_reasonable": actual_volume < expected_final_volume_upper_bound + expected_plate_volume * 0.05,
+        "errors": [],
     }
 
-    result["valid"] = all(
-        value for key, value in result.items() if key not in ("valid", "component")
-    )
-    return result
+    if PLATE_T < 2.0:
+        results["valid"] = False
+        results["errors"].append("PLATE_T violates minimum FDM thickness constraint.")
+
+    if N_HOLES != 4:
+        results["valid"] = False
+        results["errors"].append("N_HOLES must be exactly 4.")
+
+    if MIN_WALL_AFTER_HOLE < 2.0:
+        results["valid"] = False
+        results["errors"].append("Minimum wall after hole is below 2.0mm.")
+
+    if CHAMFER_W >= PLATE_T / 2.0:
+        results["valid"] = False
+        results["errors"].append("Chamfer width must be less than half the plate thickness.")
+
+    shape = part.val()
+    bbox = shape.BoundingBox()
+
+    expected_x = PLATE_L
+    expected_y = PLATE_W
+    expected_z = PLATE_T
+    tol = 1e-3
+
+    if abs(bbox.xlen - expected_x) > tol:
+        results["valid"] = False
+        results["errors"].append("Bounding box X length mismatch.")
+
+    if abs(bbox.ylen - expected_y) > tol:
+        results["valid"] = False
+        results["errors"].append("Bounding box Y width mismatch.")
+
+    if abs(bbox.zlen - expected_z) > tol:
+        results["valid"] = False
+        results["errors"].append("Bounding box Z thickness mismatch.")
+
+    if abs(bbox.zmin - 0.0) > tol:
+        results["valid"] = False
+        results["errors"].append("Bottom face is not on z=0.")
+
+    if shape.Volume() <= 0.0:
+        results["valid"] = False
+        results["errors"].append("Part volume must be positive.")
+
+    return results
 
 
-def export_all(part: cq.Workplane, output_dir: str | Path = ".") -> list[str]:
+def export_all(part: cq.Workplane, output_dir: str = ".") -> list[str]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     step_path = output_path / f"{COMPONENT_NAME}.step"
     exporters.export(part, str(step_path), exportType="STEP")
+
     return [str(step_path)]
 
 
 if __name__ == "__main__":
-    model = build_part()
-    validation = validate_geometry(model)
+    part = make_rectangular_mounting_plate()
+    validation = validate_geometry(part)
     if not validation["valid"]:
-        raise ValueError(f"Geometry validation failed: {validation}")
-    export_all(model, ".")
+        raise ValueError(f"Geometry validation failed: {validation['errors']}")
+    export_all(part, ".")

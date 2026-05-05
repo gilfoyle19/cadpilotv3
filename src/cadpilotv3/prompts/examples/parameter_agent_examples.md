@@ -13,7 +13,8 @@ INPUT:
 OUTPUT:
 ```json
 {
-  "PLATE_W": {
+  "parameters": {
+    "PLATE_W": {
     "value": 42.0,
     "unit": "mm",
     "description": "Common width shared by the base plate and vertical servo plate.",
@@ -127,6 +128,7 @@ OUTPUT:
     "constraint": "must match PLATE_W",
     "is_derived": true,
     "derived_from": "PLATE_W"
+    }
   }
 }
 ```
@@ -144,7 +146,8 @@ INPUT:
 OUTPUT:
 ```json
 {
-  "OUTER_L": {
+  "parameters": {
+    "OUTER_L": {
     "value": 100.0,
     "unit": "mm",
     "description": "Overall enclosure length.",
@@ -249,6 +252,7 @@ OUTPUT:
     "constraint": "must equal BASE_H + LID_TOP_T",
     "is_derived": true,
     "derived_from": "BASE_H + LID_TOP_T"
+    }
   }
 }
 ```
