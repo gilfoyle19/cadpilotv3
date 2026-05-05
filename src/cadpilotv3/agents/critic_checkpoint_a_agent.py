@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
-
-
-from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.critic import CriticReport
+from cadpilotv3.schemas.geometry_plan import GeometryPlan
+from cadpilotv3.schemas.intent_spec import IntentSpec
+from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
 
 class CriticCheckpointAAgent:
@@ -51,4 +49,10 @@ class CriticCheckpointAAgent:
 
         prompt = "\n\n".join(prompt_parts)
 
-        return invoke_pydantic(llm, prompt, CriticReport)
+        return invoke_pydantic(
+            llm,
+            prompt,
+            CriticReport,
+            agent_name=AgentName.CRITIC_A.value,
+            trace_metadata={"critic_attempt_count": critic_attempt_count},
+        )

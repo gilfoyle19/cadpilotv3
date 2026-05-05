@@ -53,4 +53,10 @@ class CriticCheckpointBAgent:
             ]
         )
 
-        return invoke_pydantic(llm, prompt, CriticBReport)
+        return invoke_pydantic(
+            llm,
+            prompt,
+            CriticBReport,
+            agent_name=AgentName.CRITIC_B.value,
+            trace_metadata={"repair_count": repair_count},
+        )

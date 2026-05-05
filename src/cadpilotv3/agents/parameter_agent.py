@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
-
-
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.parameters import ParameterSchema
+from cadpilotv3.shared import invoke_pydantic, load_prompt_text
 
 
 class ParameterAgent:
@@ -32,4 +30,9 @@ class ParameterAgent:
             ]
         )
 
-        return invoke_pydantic(llm, prompt, ParameterSchema)
+        return invoke_pydantic(
+            llm,
+            prompt,
+            ParameterSchema,
+            agent_name=AgentName.PARAMETER.value,
+        )

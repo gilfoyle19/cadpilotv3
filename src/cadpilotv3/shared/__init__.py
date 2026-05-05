@@ -4,6 +4,7 @@ from cadpilotv3.shared.json_utils import (
     parse_json,
     strip_code_fences,
 )
+from cadpilotv3.shared.llm_trace import clear_llm_trace, configure_llm_trace
 from cadpilotv3.shared.llm_utils import (
     LLMResponseValidationError,
     LLMTextResult,
@@ -43,6 +44,8 @@ __all__ = [
     "invoke_pydantic",
     "invoke_text",
     "invoke_text_with_metadata",
+    "clear_llm_trace",
+    "configure_llm_trace",
     "ensure_dir",
     "get_artifacts_dir",
     "get_logs_dir",

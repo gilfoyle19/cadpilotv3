@@ -25,4 +25,9 @@ class IntentSpecAgent:
             ]
         )
 
-        return invoke_pydantic(llm, prompt, IntentSpec)
+        return invoke_pydantic(
+            llm,
+            prompt,
+            IntentSpec,
+            agent_name=AgentName.INTENT_SPEC.value,
+        )

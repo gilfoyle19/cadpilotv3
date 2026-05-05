@@ -8,6 +8,7 @@ from cadpilotv3.config.settings import get_settings
 from cadpilotv3.graph.pipeline import build_pipeline
 from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.logging import log_error, log_with_context, setup_logging
+from cadpilotv3.shared import clear_llm_trace, configure_llm_trace
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def main() -> None:
 
     settings = get_settings()
     run_id = str(uuid4())
+    configure_llm_trace(run_id)
 
     logger.info(
         "Starting CAD pipeline",
@@ -69,7 +71,8 @@ def main() -> None:
     )
 
     user_prompt = (
-        "Design a single-piece FDM-printable belt tensioner bracket for a small CoreXY-style 3D printer. Use mm units and export as STEP. The part should mount to a 20x20 aluminum extrusion using two M5 through holes spaced 20mm apart. Include a vertical tab with a horizontal slot for an M4 tensioning screw, sized so the screw can slide about 12mm for belt adjustment. Add two triangular gussets between the base and vertical tab for stiffness, placed outboard so they do not interfere with the M5 holes or the M4 slot. Keep the part compact, with minimum 3mm wall thickness, rounded outside corners, small chamfers on accessible edges, and a flat print base. The design should be a static single-piece bracket with no moving joints."
+        "Design a simple single-piece FDM-printable mounting plate in mm units and export as STEP. The part should be a rectangular flat plate 80mm long, 40mm wide, and 4mm thick. Add four M4 clearance through holes, one near each corner, with 8mm edge offset from both adjacent edges. Add a shallow 1mm chamfer around the outside top edges. Keep the bottom flat for printing. The design should be a static single solid part with no moving components, no assemblies, and no decorative features."
+        
     )
 
     try:
@@ -127,6 +130,8 @@ def main() -> None:
         )
         print("\n=== PIPELINE FAILED ===\n")
         print(f"{type(exc).__name__}: {exc}")
+    finally:
+        clear_llm_trace()
 
 
 if __name__ == "__main__":

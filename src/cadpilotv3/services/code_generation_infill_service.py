@@ -16,6 +16,7 @@ from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.repair import RepairOutput
 from cadpilotv3.shared import LLMTextResult, coerce_llm_text_result
+from cadpilotv3.shared.llm_trace import update_llm_trace
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,13 @@ class CodeGenerationInfillService:
                 )
             )
             implemented_script = self._extract_generated_code(llm_result.text)
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={
+                    "extracted_script_length_chars": len(implemented_script),
+                },
+                files={"extracted_script.py": implemented_script},
+            )
 
             try:
                 self._validate_generated_code(implemented_script)
@@ -74,6 +82,14 @@ class CodeGenerationInfillService:
                 last_error = exc
                 generation_feedback = str(exc)
                 compact_retry = self._should_use_compact_retry(exc)
+                update_llm_trace(
+                    llm_result.trace_dir,
+                    metadata_updates={
+                        "validation_status": "failed",
+                        "validation_error": str(exc),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
                 artifact_path = self._write_failed_attempt(
                     llm_result=llm_result,
                     implemented_script=implemented_script,
@@ -98,6 +114,10 @@ class CodeGenerationInfillService:
                 )
                 continue
 
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={"validation_status": "passed"},
+            )
             logger.info(
                 "Implemented complete CadQuery script",
                 extra={

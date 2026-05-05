@@ -57,4 +57,9 @@ class GeometryPlannerAgent:
 
         prompt = "\n\n".join(prompt_sections)
 
-        return invoke_pydantic(llm, prompt, GeometryPlan)
+        return invoke_pydantic(
+            llm,
+            prompt,
+            GeometryPlan,
+            agent_name=AgentName.GEOMETRY_PLANNER.value,
+        )

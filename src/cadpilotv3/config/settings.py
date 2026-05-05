@@ -28,6 +28,7 @@ class AppSettings(BaseSettings):
     llm_max_tokens: int = 16000
     llm_timeout_seconds: int = 120
     llm_streaming: bool = True
+    llm_trace_outputs: bool = True
 
     openai_api_key: str | None = None
     openai_base_url: str | None = None

@@ -38,6 +38,8 @@ class CodeGenerationInfillAgent:
                     parameters=parameters,
                     generation_feedback=generation_feedback,
                 ),
+                agent_name=AgentName.CODEGEN.value,
+                trace_metadata={"prompt_mode": "compact_retry"},
             )
 
         system_prompt = load_prompt_text(
@@ -119,7 +121,17 @@ class CodeGenerationInfillAgent:
             )
 
         prompt = "\n\n".join(prompt_parts)
-        return invoke_text_with_metadata(llm, prompt)
+        return invoke_text_with_metadata(
+            llm,
+            prompt,
+            agent_name=AgentName.CODEGEN.value,
+            trace_metadata={
+                "prompt_mode": "normal",
+                "has_repair_context": repair_context is not None,
+                "has_critic_feedback": bool(critic_feedback),
+                "has_generation_feedback": bool(generation_feedback),
+            },
+        )
 
     def _build_compact_retry_prompt(
         self,

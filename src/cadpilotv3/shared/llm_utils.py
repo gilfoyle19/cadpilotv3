@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from cadpilotv3.shared.json_utils import JSONExtractionError, parse_json
+from cadpilotv3.shared.llm_trace import record_llm_call, update_llm_trace
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class LLMTextResult:
     usage_metadata: dict[str, Any] | None
     response_id: str | None
     raw_response_repr: str
+    trace_dir: str | None = None
 
 
 def get_message_text(response: Any) -> str:
@@ -45,11 +47,28 @@ def get_message_text(response: Any) -> str:
     return str(content)
 
 
-def invoke_text(llm: Any, prompt: str) -> str:
-    return invoke_text_with_metadata(llm, prompt).text
+def invoke_text(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> str:
+    return invoke_text_with_metadata(
+        llm,
+        prompt,
+        agent_name=agent_name,
+        trace_metadata=trace_metadata,
+    ).text
 
 
-def invoke_text_with_metadata(llm: Any, prompt: str) -> LLMTextResult:
+def invoke_text_with_metadata(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> LLMTextResult:
     response = llm.invoke(prompt)
     response_metadata = getattr(response, "response_metadata", None)
     usage_metadata = getattr(response, "usage_metadata", None)
@@ -60,12 +79,26 @@ def invoke_text_with_metadata(llm: Any, prompt: str) -> LLMTextResult:
     if usage_metadata is not None and not isinstance(usage_metadata, dict):
         usage_metadata = {"value": str(usage_metadata)}
 
-    return LLMTextResult(
-        text=get_message_text(response),
+    response_text = get_message_text(response)
+    raw_response_repr = repr(response)
+    trace_dir = record_llm_call(
+        prompt=prompt,
+        response_text=response_text,
+        agent_name=agent_name,
         response_metadata=response_metadata or {},
         usage_metadata=usage_metadata,
         response_id=str(response_id) if response_id is not None else None,
-        raw_response_repr=repr(response),
+        raw_response_repr=raw_response_repr,
+        extra_metadata=trace_metadata,
+    )
+
+    return LLMTextResult(
+        text=response_text,
+        response_metadata=response_metadata or {},
+        usage_metadata=usage_metadata,
+        response_id=str(response_id) if response_id is not None else None,
+        raw_response_repr=raw_response_repr,
+        trace_dir=str(trace_dir) if trace_dir is not None else None,
     )
 
 
@@ -94,6 +127,7 @@ def coerce_llm_text_result(response: Any) -> LLMTextResult:
             usage_metadata=usage_metadata,
             response_id=str(response_id) if response_id is not None else None,
             raw_response_repr=str(raw_response_repr),
+            trace_dir=str(getattr(response, "trace_dir", "")) or None,
         )
 
     return LLMTextResult(
@@ -102,25 +136,95 @@ def coerce_llm_text_result(response: Any) -> LLMTextResult:
         usage_metadata=None,
         response_id=None,
         raw_response_repr=repr(response),
+        trace_dir=None,
     )
 
 
-def invoke_json(llm: Any, prompt: str) -> dict[str, Any] | list[Any]:
-    text = invoke_text(llm, prompt)
-    return parse_json(text)
+def invoke_json(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | list[Any]:
+    result = invoke_text_with_metadata(
+        llm,
+        prompt,
+        agent_name=agent_name,
+        trace_metadata=trace_metadata,
+    )
+    try:
+        data = parse_json(result.text)
+    except JSONExtractionError as exc:
+        update_llm_trace(
+            result.trace_dir,
+            metadata_updates={
+                "parse_status": "failed",
+                "parse_error": str(exc),
+            },
+        )
+        raise
+
+    update_llm_trace(
+        result.trace_dir,
+        metadata_updates={"parse_status": "passed"},
+        files={"parsed_output.json": json.dumps(data, indent=2)},
+    )
+    return data
 
 
-def invoke_pydantic(llm: Any, prompt: str, schema: type[T]) -> T:
+def invoke_pydantic(
+    llm: Any,
+    prompt: str,
+    schema: type[T],
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> T:
     last_error: Exception | None = None
     active_prompt = prompt
 
     for attempt_number in range(1, 3):
-        text = invoke_text(llm, active_prompt)
+        result = invoke_text_with_metadata(
+            llm,
+            active_prompt,
+            agent_name=agent_name,
+            trace_metadata={
+                **(trace_metadata or {}),
+                "schema": schema.__name__,
+                "structured_attempt_number": attempt_number,
+            },
+        )
+        text = result.text
         try:
             data = parse_json(text)
-            return schema.model_validate(data)
+            parsed = schema.model_validate(data)
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "passed",
+                    "validation_status": "passed",
+                    "schema": schema.__name__,
+                },
+                files={
+                    "parsed_output.json": json.dumps(data, indent=2),
+                    "validated_output.json": parsed.model_dump_json(indent=2),
+                },
+            )
+            return parsed
         except (JSONExtractionError, ValidationError) as exc:
             last_error = exc
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "failed"
+                    if isinstance(exc, JSONExtractionError)
+                    else "passed",
+                    "validation_status": "failed",
+                    "schema": schema.__name__,
+                    "validation_error": str(exc),
+                },
+            )
             if attempt_number == 2:
                 break
 

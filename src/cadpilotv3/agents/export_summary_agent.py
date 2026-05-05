@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+from pydantic import ValidationError
+
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
 from cadpilotv3.schemas.critic import CriticBReport
@@ -12,11 +16,12 @@ from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.validation import ValidationReport
 from cadpilotv3.shared import (
     JSONExtractionError,
-    invoke_text,
+    invoke_text_with_metadata,
     load_prompt_text,
     parse_json,
     strip_code_fences,
 )
+from cadpilotv3.shared.llm_trace import update_llm_trace
 
 
 class ExportSummaryAgent:
@@ -61,17 +66,55 @@ class ExportSummaryAgent:
                 "Critic B report:",
                 critic_b_report.model_dump_json(indent=2),
                 "Exported files:",
-                __import__("json").dumps(export_files_json, indent=2),
+                json.dumps(export_files_json, indent=2),
             ]
         )
 
-        response_text = invoke_text(llm, prompt)
+        result = invoke_text_with_metadata(
+            llm,
+            prompt,
+            agent_name=AgentName.EXPORT_SUMMARY.value,
+        )
+        response_text = result.text
         try:
-            return ExportSummary.model_validate(parse_json(response_text))
+            parsed_json = parse_json(response_text)
+            summary = ExportSummary.model_validate(parsed_json)
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "passed",
+                    "validation_status": "passed",
+                    "schema": ExportSummary.__name__,
+                },
+                files={
+                    "parsed_output.json": json.dumps(parsed_json, indent=2),
+                    "validated_output.json": summary.model_dump_json(indent=2),
+                },
+            )
+            return summary
         except JSONExtractionError:
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "failed",
+                    "validation_status": "fallback_markdown",
+                    "schema": ExportSummary.__name__,
+                },
+            )
             markdown_report = strip_code_fences(response_text)
             return ExportSummary(
                 export_files=export_files,
                 assembly_report_markdown=markdown_report,
                 user_facing_warnings=critic_b_report.user_facing_warnings,
             )
+        except ValidationError as exc:
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "passed",
+                    "validation_status": "failed",
+                    "schema": ExportSummary.__name__,
+                    "validation_error": str(exc),
+                },
+            )
+            raise

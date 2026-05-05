@@ -225,3 +225,5 @@ few_shot/
 .sandbox_runs/
 models/
 output/
+codegen_failed_attempts/
+llm_runs/
