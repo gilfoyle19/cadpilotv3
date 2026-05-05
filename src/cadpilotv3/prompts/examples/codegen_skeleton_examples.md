@@ -35,7 +35,7 @@ M3_CLEAR_D = 3.4  # M3 clearance hole diameter in mm
 PILOT_D = 12.0  # centered pilot hole diameter in mm
 
 
-def make_square_bolt_pattern_adapter_plate() -> cq.Workplane:
+def build_part() -> cq.Workplane:
     """Create the symmetric adapter plate.
 
     Returns:
@@ -64,7 +64,7 @@ def export_all(model: cq.Workplane, output_dir: str) -> list[str]:
 
 
 if __name__ == "__main__":
-    model = make_square_bolt_pattern_adapter_plate()
+    model = build_part()
     validate_geometry(model)
     export_all(model, "./output")
 ```

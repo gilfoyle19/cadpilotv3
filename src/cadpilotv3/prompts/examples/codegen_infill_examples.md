@@ -60,7 +60,7 @@ def make_z_axis_cylinder(diameter: float, length: float, x: float, y: float, z: 
     )
 
 
-def make_micro_servo_extrusion_mount() -> cq.Workplane:
+def build_part() -> cq.Workplane:
     plate_y = -BASE_W / 2 + SERVO_PLATE_T / 2
     plate_front_y = plate_y + SERVO_PLATE_T / 2
 
@@ -122,7 +122,7 @@ def make_micro_servo_extrusion_mount() -> cq.Workplane:
 
 
 if __name__ == "__main__":
-    model = make_micro_servo_extrusion_mount()
+    model = build_part()
     exporters.export(model, f"{COMPONENT_NAME}.step")
 ```
 
@@ -174,7 +174,7 @@ def make_y_axis_cylinder(diameter: float, length: float, x: float, y: float, z: 
     )
 
 
-def make_bearing_pillow_block_608() -> cq.Workplane:
+def build_part() -> cq.Workplane:
     base = (
         cq.Workplane("XY")
         .box(BASE_L, BASE_W, BASE_T)
@@ -210,7 +210,7 @@ def make_bearing_pillow_block_608() -> cq.Workplane:
 
 
 if __name__ == "__main__":
-    model = make_bearing_pillow_block_608()
+    model = build_part()
     exporters.export(model, f"{COMPONENT_NAME}.step")
 ```
 
@@ -266,7 +266,7 @@ def make_rounded_box(length: float, width: float, height: float, radius: float) 
     return box
 
 
-def make_snap_on_lid() -> cq.Workplane:
+def build_part() -> cq.Workplane:
     top = make_rounded_box(LID_L, LID_W, TOP_T, CORNER_R).translate(
         (0, 0, LIP_H + TOP_T / 2.0)
     )
@@ -341,7 +341,7 @@ def make_snap_on_lid() -> cq.Workplane:
 
 
 if __name__ == "__main__":
-    model = make_snap_on_lid()
+    model = build_part()
     exporters.export(model, f"{COMPONENT_NAME}.step")
 ```
 
@@ -377,7 +377,7 @@ M3_CLEAR_D = 3.4
 PILOT_D = 12.0
 
 
-def make_square_bolt_pattern_adapter_plate() -> cq.Workplane:
+def build_part() -> cq.Workplane:
     plate = (
         cq.Workplane("XY")
         .rect(PLATE_L - 2.0 * CORNER_R, PLATE_W)
@@ -439,7 +439,7 @@ def make_square_bolt_pattern_adapter_plate() -> cq.Workplane:
 
 
 if __name__ == "__main__":
-    model = make_square_bolt_pattern_adapter_plate()
+    model = build_part()
     exporters.export(model, f"{COMPONENT_NAME}.step")
 ```
 
