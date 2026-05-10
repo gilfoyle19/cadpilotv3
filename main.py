@@ -71,7 +71,7 @@ def main() -> None:
     )
 
     user_prompt = (
-        "Create a static two-part FDM-printable electronics enclosure assembly in CadQuery using millimeters and exporting STEP, with a 100x60x30 mm open-top base, 2 mm walls, four internal M3 standoffs near the corners, a flat removable lid sitting closed on top, four aligned M3 clearance holes in the lid, and a small rectangular cable opening on one short side, modeled as separate base and lid parts with no hinges or motion."
+        "Create a static two-part FDM-printable wall-mounted sensor enclosure assembly in CadQuery using millimeters and exporting STEP. The assembly should include a separate rear mounting plate and a removable front cover, with no hinges or moving joints. The rear plate should be about 90 x 55 x 6 mm, with four M4 countersunk wall-mounting holes near the corners and two raised internal standoffs for holding a small PCB. The front cover should be a shallow rectangular shell about 90 x 55 x 22 mm that sits over the rear plate, with 2 mm walls, a small rectangular cable exit notch on the bottom edge, and four M3 clearance holes aligned to matching screw bosses on the rear plate. Keep the cover and rear plate as separate parts in the closed assembled position, include a small perimeter lip or step for alignment, and make the design suitable for FDM printing with flat print faces and no unsupported floating geometry."
         
     )
 

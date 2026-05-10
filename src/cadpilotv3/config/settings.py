@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,12 @@ class AppSettings(BaseSettings):
     llm_timeout_seconds: int = 120
     llm_streaming: bool = True
     llm_trace_outputs: bool = True
+
+    intent_web_research_enabled: bool = True
+    intent_web_research_model: str | None = None
+    intent_web_research_context_size: Literal["low", "medium", "high"] = "low"
+    intent_web_research_max_output_tokens: int = 1200
+    intent_web_research_timeout_seconds: int = 45
 
     openai_api_key: str | None = None
     openai_base_url: str | None = None

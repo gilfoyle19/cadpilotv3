@@ -35,6 +35,15 @@ OUTPUT:
     "no_floating_geometry",
     "bolt_pattern_required"
   ],
+  "explicit_dimensions": [
+    "20x20 aluminum extrusion",
+    "two M5 through holes spaced 20mm apart",
+    "four M2 through holes",
+    "minimum 2mm walls"
+  ],
+  "explicit_constraints": [],
+  "researched_dimensions": [],
+  "research_sources": [],
   "clarifications_needed": []
 }
 ```
@@ -73,6 +82,16 @@ OUTPUT:
     "min_feature_3mm",
     "no_stress_concentrations"
   ],
+  "explicit_dimensions": [
+    "608 bearing",
+    "two M6 through holes",
+    "approximately 80mm long",
+    "35mm wide",
+    "35mm tall"
+  ],
+  "explicit_constraints": [],
+  "researched_dimensions": [],
+  "research_sources": [],
   "clarifications_needed": []
 }
 ```
@@ -113,6 +132,15 @@ OUTPUT:
     "bolt_pattern_required",
     "alignment_pins"
   ],
+  "explicit_dimensions": [
+    "100mm x 60mm x 35mm overall",
+    "2mm walls",
+    "four internal cylindrical standoffs for M3 screws",
+    "four M3 countersunk through holes"
+  ],
+  "explicit_constraints": [],
+  "researched_dimensions": [],
+  "research_sources": [],
   "clarifications_needed": []
 }
 ```
@@ -158,6 +186,17 @@ OUTPUT:
     "bolt_pattern_required",
     "no_floating_geometry"
   ],
+  "explicit_dimensions": [
+    "NEMA 17 mounting pattern",
+    "four M3 motor mounting screws",
+    "31mm square NEMA 17 bolt pattern",
+    "four M5 vertical mounting holes"
+  ],
+  "explicit_constraints": [
+    "triangular gussets outboard so they do not interfere with the shaft hole or M3 mounting holes"
+  ],
+  "researched_dimensions": [],
+  "research_sources": [],
   "clarifications_needed": []
 }
 ```

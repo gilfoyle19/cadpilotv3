@@ -110,7 +110,15 @@ LLM_MODEL=gpt-4.1
 LLM_REASONING_MODEL=gpt-4.1
 LLM_CRITIC_MODEL=gpt-4.1
 LLM_CODE_MODEL=gpt-5.4
+INTENT_WEB_RESEARCH_ENABLED=true
+INTENT_WEB_RESEARCH_CONTEXT_SIZE=low
 ```
+
+When `LLM_PROVIDER=openai`, the intent spec agent can use OpenAI web search to
+look up real-world product, connector, PCB, and mounting dimensions before it
+builds the structured CAD spec. Set `INTENT_WEB_RESEARCH_ENABLED=false` to
+disable that step, or set `INTENT_WEB_RESEARCH_MODEL` to use a different model
+for the research pass.
 
 Optional LangSmith tracing:
 
@@ -139,6 +147,7 @@ The main settings live in `src/cadpilotv3/config/settings.py`. Common knobs
 include:
 
 - LLM provider and model selection.
+- intent web research enablement, model, timeout, and context size.
 - repair and critic retry limits.
 - artifact output paths.
 - CadQuery execution timeout.

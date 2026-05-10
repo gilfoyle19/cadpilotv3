@@ -22,6 +22,8 @@ class IntentSpec(BaseModel):
     constraints: list[str] = Field(default_factory=list)
     explicit_dimensions: list[str] = Field(default_factory=list)
     explicit_constraints: list[str] = Field(default_factory=list)
+    researched_dimensions: list[str] = Field(default_factory=list)
+    research_sources: list[str] = Field(default_factory=list)
 
     clarifications_needed: list[str] = Field(default_factory=list)
 
@@ -39,6 +41,8 @@ class IntentSpec(BaseModel):
         "constraints",
         "explicit_dimensions",
         "explicit_constraints",
+        "researched_dimensions",
+        "research_sources",
         "clarifications_needed",
         mode="before",
     )
