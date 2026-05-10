@@ -8,6 +8,7 @@ from cadpilotv3.config.settings import get_settings
 from cadpilotv3.graph.pipeline import build_pipeline
 from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.logging import log_error, log_with_context, setup_logging
+from cadpilotv3.services import configure_langsmith, invoke_traced_pipeline
 from cadpilotv3.shared import clear_llm_trace, configure_llm_trace
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ def main() -> None:
     setup_logging()
 
     settings = get_settings()
+    configure_langsmith()
     run_id = str(uuid4())
     configure_llm_trace(run_id)
 
@@ -71,8 +73,19 @@ def main() -> None:
     )
 
     user_prompt = (
-        "Create a static two-part FDM-printable wall-mounted sensor enclosure assembly in CadQuery using millimeters and exporting STEP. The assembly should include a separate rear mounting plate and a removable front cover, with no hinges or moving joints. The rear plate should be about 90 x 55 x 6 mm, with four M4 countersunk wall-mounting holes near the corners and two raised internal standoffs for holding a small PCB. The front cover should be a shallow rectangular shell about 90 x 55 x 22 mm that sits over the rear plate, with 2 mm walls, a small rectangular cable exit notch on the bottom edge, and four M3 clearance holes aligned to matching screw bosses on the rear plate. Keep the cover and rear plate as separate parts in the closed assembled position, include a small perimeter lip or step for alignment, and make the design suitable for FDM printing with flat print faces and no unsupported floating geometry."
-        
+        "Create a static two-part FDM-printable wall-mounted sensor enclosure assembly "
+        "in CadQuery using millimeters and exporting STEP. The assembly should include "
+        "a separate rear mounting plate and a removable front cover, with no hinges or "
+        "moving joints. The rear plate should be about 90 x 55 x 6 mm, with four M4 "
+        "countersunk wall-mounting holes near the corners and two raised internal "
+        "standoffs for holding a small PCB. The front cover should be a shallow "
+        "rectangular shell about 90 x 55 x 22 mm that sits over the rear plate, with "
+        "2 mm walls, a small rectangular cable exit notch on the bottom edge, and four "
+        "M3 clearance holes aligned to matching screw bosses on the rear plate. Keep "
+        "the cover and rear plate as separate parts in the closed assembled position, "
+        "include a small perimeter lip or step for alignment, and make the design "
+        "suitable for FDM printing with flat print faces and no unsupported floating "
+        "geometry."
     )
 
     try:
@@ -87,7 +100,12 @@ def main() -> None:
             user_prompt_preview=user_prompt[:200],
         )
 
-        result = pipeline.invoke(initial_state)
+        result = invoke_traced_pipeline(
+            pipeline,
+            initial_state,
+            run_id=run_id,
+            user_prompt=user_prompt,
+        )
         export_files = result.get("export_files", [])
         warnings = result.get("user_facing_warnings", [])
         validation = result.get("validation", {})
