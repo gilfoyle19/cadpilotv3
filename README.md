@@ -19,9 +19,9 @@ The rendered samples live under `artifacts/samples/images/`.
 
 | | | |
 | --- | --- | --- |
-| ![Bearing pillow block for a 608 bearing](artifacts/samples/images/bearing_pillow_block_608.png) | ![Snap-on electronics enclosure lid](artifacts/samples/images/snap_on_electronics_enclosure_lid.png) | ![Square bolt-pattern adapter plate](artifacts/samples/images/square_bolt_pattern_adapter_plate.png) |
+| ![Bearing pillow block](artifacts/samples/images/bearing_pillow_block.png) | ![Snap-on electronics enclosure lid](artifacts/samples/images/snap_on_electronics_enclosure_lid.png) | ![Square bolt-pattern adapter plate](artifacts/samples/images/square_bolt_pattern_adapter_plate.png) |
 | Bearing pillow block | Snap-on enclosure lid | Bolt-pattern adapter plate |
-| ![NEMA 17 motor mount assembly](artifacts/samples/images/static_nema17_motor_mount_assembly.png) | ![Split tube clamp block](artifacts/samples/images/static_split_tube_clamp_block.png) | ![Two-part electronics enclosure assembly](artifacts/samples/images/two_part_electronics_enclosure_assembly.png) |
+| ![Motor mount assembly](artifacts/samples/images/motor_mount_assembly.png) | ![Split tube clamp block](artifacts/samples/images/static_split_tube_clamp_block.png) | ![Two-part electronics enclosure assembly](artifacts/samples/images/two_parts_electronics_enclosure_assembly.png) |
 | NEMA 17 motor mount | Split tube clamp block | Two-part enclosure assembly |
 
 ## What It Does
