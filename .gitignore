@@ -227,3 +227,4 @@ models/
 output/
 codegen_failed_attempts/
 llm_runs/
+.tmp/
