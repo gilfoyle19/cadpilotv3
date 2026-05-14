@@ -5,9 +5,24 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from cadpilotv3.config.settings import AppSettings
+from cadpilotv3.graph.nodes import PipelineNodes
+from cadpilotv3.graph.routing import (
+    route_critic_a,
+    route_critic_b,
+    route_repair,
+    route_validation,
+)
+
 PipelineStreamEventType = Literal[
     "pipeline_start",
+    "node_start",
     "node_complete",
+    "code_generation_start",
+    "code_chunk",
+    "code_generation_retry",
+    "code_generation_complete",
+    "code_generation_error",
     "pipeline_complete",
     "pipeline_error",
 ]
@@ -86,6 +101,258 @@ async def astream_pipeline_events(
             },
         )
         raise
+
+
+async def astream_pipeline_with_code_events(
+    settings: AppSettings,
+    initial_state: Mapping[str, Any],
+    *,
+    run_id: str | None = None,
+    user_prompt: str | None = None,
+) -> AsyncIterator[PipelineStreamEvent]:
+    nodes = PipelineNodes(settings)
+    state = dict(initial_state)
+    sequence = 1
+
+    yield PipelineStreamEvent(
+        event_type="pipeline_start",
+        sequence=sequence,
+        run_id=run_id,
+        payload={
+            "user_prompt_preview": (user_prompt or state.get("user_prompt") or "")[:200],
+            "initial_state_keys": sorted(str(key) for key in state.keys()),
+            "streaming_mode": "orchestrated",
+        },
+    )
+
+    try:
+        async for event in _run_async_node(
+            nodes.aintent_spec_agent,
+            state,
+            node_name="intent_spec_agent",
+            run_id=run_id,
+            sequence=sequence,
+        ):
+            sequence = event.sequence
+            yield event
+
+        next_node = "geometry_planner_agent"
+        while True:
+            if next_node == "geometry_planner_agent":
+                async for event in _run_async_node(
+                    nodes.ageometry_planner_agent,
+                    state,
+                    node_name="geometry_planner_agent",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = "critic_checkpoint_a"
+                continue
+
+            if next_node == "critic_checkpoint_a":
+                async for event in _run_async_node(
+                    nodes.acritic_checkpoint_a,
+                    state,
+                    node_name="critic_checkpoint_a",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = route_critic_a(state)
+                continue
+
+            if next_node == "parameter_agent":
+                async for event in _run_async_node(
+                    nodes.aparameter_agent,
+                    state,
+                    node_name="parameter_agent",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = "code_generation_infill_agent"
+                continue
+
+            if next_node == "code_generation_infill_agent":
+                async for event in _stream_codegen_node(
+                    nodes,
+                    state,
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = "execution_validation_node"
+                continue
+
+            if next_node == "execution_validation_node":
+                async for event in _run_async_node(
+                    nodes.aexecution_validation_node,
+                    state,
+                    node_name="execution_validation_node",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = route_validation(state)
+                continue
+
+            if next_node == "repair_agent":
+                async for event in _run_async_node(
+                    nodes.arepair_agent,
+                    state,
+                    node_name="repair_agent",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = route_repair(state)
+                continue
+
+            if next_node == "critic_checkpoint_b":
+                async for event in _run_async_node(
+                    nodes.acritic_checkpoint_b,
+                    state,
+                    node_name="critic_checkpoint_b",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                next_node = route_critic_b(state)
+                continue
+
+            if next_node == "export_summary_agent":
+                async for event in _run_async_node(
+                    nodes.aexport_summary_agent,
+                    state,
+                    node_name="export_summary_agent",
+                    run_id=run_id,
+                    sequence=sequence,
+                ):
+                    sequence = event.sequence
+                    yield event
+                break
+
+            raise RuntimeError(f"Unsupported streaming pipeline node '{next_node}'")
+
+        sequence += 1
+        yield PipelineStreamEvent(
+            event_type="pipeline_complete",
+            sequence=sequence,
+            run_id=run_id,
+            payload=_summarize_final_state(state),
+        )
+    except Exception as exc:
+        sequence += 1
+        yield PipelineStreamEvent(
+            event_type="pipeline_error",
+            sequence=sequence,
+            run_id=run_id,
+            payload={
+                "error_class": type(exc).__name__,
+                "error_message": str(exc),
+            },
+        )
+        raise
+
+
+async def _run_async_node(
+    node_callable: Any,
+    state: dict[str, Any],
+    *,
+    node_name: str,
+    run_id: str | None,
+    sequence: int,
+) -> AsyncIterator[PipelineStreamEvent]:
+    sequence += 1
+    yield PipelineStreamEvent(
+        event_type="node_start",
+        sequence=sequence,
+        run_id=run_id,
+        node_name=node_name,
+        payload={"summary": _summarize_state(state)},
+    )
+
+    updated_state = await node_callable(state)
+    state.update(updated_state)
+
+    sequence += 1
+    yield PipelineStreamEvent(
+        event_type="node_complete",
+        sequence=sequence,
+        run_id=run_id,
+        node_name=node_name,
+        payload=_summarize_node_state(state),
+    )
+
+
+async def _stream_codegen_node(
+    nodes: PipelineNodes,
+    state: dict[str, Any],
+    *,
+    run_id: str | None,
+    sequence: int,
+) -> AsyncIterator[PipelineStreamEvent]:
+    node_name = "code_generation_infill_agent"
+    sequence += 1
+    yield PipelineStreamEvent(
+        event_type="node_start",
+        sequence=sequence,
+        run_id=run_id,
+        node_name=node_name,
+        payload={"summary": _summarize_state(state)},
+    )
+
+    critic_feedback = None
+    critic_b_report = state.get("critic_b_report")
+    if (
+        critic_b_report
+        and getattr(critic_b_report, "routing", None) == "patch"
+        and getattr(critic_b_report, "patch_instructions", None)
+    ):
+        critic_feedback = critic_b_report.patch_instructions
+
+    async for code_event in nodes.code_generation_infill_service.astream_script(
+        spec=state["spec"],
+        geometry_plan=state["geometry_plan"],
+        parameters=state["parameters"],
+        repair_context=state["repair_decision"],
+        critic_feedback=critic_feedback,
+        current_script=state.get("script")
+        if critic_feedback or state.get("repair_decision")
+        else None,
+    ):
+        sequence += 1
+        payload = {
+            **code_event.payload,
+            "attempt_number": code_event.attempt_number,
+        }
+        yield PipelineStreamEvent(
+            event_type=code_event.event_type,
+            sequence=sequence,
+            run_id=run_id,
+            node_name=node_name,
+            payload=payload,
+        )
+
+        if code_event.event_type == "code_generation_complete":
+            state["script"] = code_event.payload["script"]
+
+    sequence += 1
+    yield PipelineStreamEvent(
+        event_type="node_complete",
+        sequence=sequence,
+        run_id=run_id,
+        node_name=node_name,
+        payload=_summarize_node_state(state),
+    )
 
 
 def _iter_node_updates(update: Any) -> list[tuple[str, Any]]:
