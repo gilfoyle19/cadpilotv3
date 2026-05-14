@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -70,35 +71,44 @@ def invoke_text_with_metadata(
     trace_metadata: dict[str, Any] | None = None,
 ) -> LLMTextResult:
     response = llm.invoke(prompt)
-    response_metadata = getattr(response, "response_metadata", None)
-    usage_metadata = getattr(response, "usage_metadata", None)
-    response_id = getattr(response, "id", None)
-
-    if response_metadata is not None and not isinstance(response_metadata, dict):
-        response_metadata = {"value": str(response_metadata)}
-    if usage_metadata is not None and not isinstance(usage_metadata, dict):
-        usage_metadata = {"value": str(usage_metadata)}
-
-    response_text = get_message_text(response)
-    raw_response_repr = repr(response)
-    trace_dir = record_llm_call(
+    return _build_text_result_from_response(
+        response,
         prompt=prompt,
-        response_text=response_text,
         agent_name=agent_name,
-        response_metadata=response_metadata or {},
-        usage_metadata=usage_metadata,
-        response_id=str(response_id) if response_id is not None else None,
-        raw_response_repr=raw_response_repr,
-        extra_metadata=trace_metadata,
+        trace_metadata=trace_metadata,
     )
 
-    return LLMTextResult(
-        text=response_text,
-        response_metadata=response_metadata or {},
-        usage_metadata=usage_metadata,
-        response_id=str(response_id) if response_id is not None else None,
-        raw_response_repr=raw_response_repr,
-        trace_dir=str(trace_dir) if trace_dir is not None else None,
+
+async def ainvoke_text(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> str:
+    return (
+        await ainvoke_text_with_metadata(
+            llm,
+            prompt,
+            agent_name=agent_name,
+            trace_metadata=trace_metadata,
+        )
+    ).text
+
+
+async def ainvoke_text_with_metadata(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> LLMTextResult:
+    response = await _ainvoke_llm(llm, prompt)
+    return _build_text_result_from_response(
+        response,
+        prompt=prompt,
+        agent_name=agent_name,
+        trace_metadata=trace_metadata,
     )
 
 
@@ -148,6 +158,39 @@ def invoke_json(
     trace_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any] | list[Any]:
     result = invoke_text_with_metadata(
+        llm,
+        prompt,
+        agent_name=agent_name,
+        trace_metadata=trace_metadata,
+    )
+    try:
+        data = parse_json(result.text)
+    except JSONExtractionError as exc:
+        update_llm_trace(
+            result.trace_dir,
+            metadata_updates={
+                "parse_status": "failed",
+                "parse_error": str(exc),
+            },
+        )
+        raise
+
+    update_llm_trace(
+        result.trace_dir,
+        metadata_updates={"parse_status": "passed"},
+        files={"parsed_output.json": json.dumps(data, indent=2)},
+    )
+    return data
+
+
+async def ainvoke_json(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | list[Any]:
+    result = await ainvoke_text_with_metadata(
         llm,
         prompt,
         agent_name=agent_name,
@@ -248,6 +291,133 @@ def invoke_pydantic(
         extra={"schema": schema.__name__, "reason": str(last_error)},
     )
     raise LLMResponseValidationError(str(last_error)) from last_error
+
+
+async def ainvoke_pydantic(
+    llm: Any,
+    prompt: str,
+    schema: type[T],
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> T:
+    last_error: Exception | None = None
+    active_prompt = prompt
+
+    for attempt_number in range(1, 3):
+        result = await ainvoke_text_with_metadata(
+            llm,
+            active_prompt,
+            agent_name=agent_name,
+            trace_metadata={
+                **(trace_metadata or {}),
+                "schema": schema.__name__,
+                "structured_attempt_number": attempt_number,
+            },
+        )
+        text = result.text
+        try:
+            data = parse_json(text)
+            parsed = schema.model_validate(data)
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "passed",
+                    "validation_status": "passed",
+                    "schema": schema.__name__,
+                },
+                files={
+                    "parsed_output.json": json.dumps(data, indent=2),
+                    "validated_output.json": parsed.model_dump_json(indent=2),
+                },
+            )
+            return parsed
+        except (JSONExtractionError, ValidationError) as exc:
+            last_error = exc
+            update_llm_trace(
+                result.trace_dir,
+                metadata_updates={
+                    "parse_status": "failed"
+                    if isinstance(exc, JSONExtractionError)
+                    else "passed",
+                    "validation_status": "failed",
+                    "schema": schema.__name__,
+                    "validation_error": str(exc),
+                },
+            )
+            if attempt_number == 2:
+                break
+
+            logger.warning(
+                "LLM response failed structured validation; retrying",
+                extra={
+                    "schema": schema.__name__,
+                    "attempt_number": attempt_number,
+                    "reason": str(exc),
+                },
+            )
+            active_prompt = _build_structured_retry_prompt(
+                prompt=prompt,
+                schema=schema,
+                error=exc,
+                invalid_response=text,
+            )
+
+    logger.error(
+        "LLM response failed schema validation",
+        extra={"schema": schema.__name__, "reason": str(last_error)},
+    )
+    raise LLMResponseValidationError(str(last_error)) from last_error
+
+
+async def _ainvoke_llm(llm: Any, prompt: str) -> Any:
+    ainvoke = getattr(llm, "ainvoke", None)
+    if callable(ainvoke):
+        return await ainvoke(prompt)
+
+    return await asyncio.to_thread(llm.invoke, prompt)
+
+
+def _build_text_result_from_response(
+    response: Any,
+    *,
+    prompt: str,
+    agent_name: str | None,
+    trace_metadata: dict[str, Any] | None,
+) -> LLMTextResult:
+    response_metadata = _coerce_metadata(getattr(response, "response_metadata", None))
+    usage_metadata = _coerce_metadata(getattr(response, "usage_metadata", None))
+    response_id = getattr(response, "id", None)
+
+    response_text = get_message_text(response)
+    raw_response_repr = repr(response)
+    trace_dir = record_llm_call(
+        prompt=prompt,
+        response_text=response_text,
+        agent_name=agent_name,
+        response_metadata=response_metadata or {},
+        usage_metadata=usage_metadata,
+        response_id=str(response_id) if response_id is not None else None,
+        raw_response_repr=raw_response_repr,
+        extra_metadata=trace_metadata,
+    )
+
+    return LLMTextResult(
+        text=response_text,
+        response_metadata=response_metadata or {},
+        usage_metadata=usage_metadata,
+        response_id=str(response_id) if response_id is not None else None,
+        raw_response_repr=raw_response_repr,
+        trace_dir=str(trace_dir) if trace_dir is not None else None,
+    )
+
+
+def _coerce_metadata(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    return {"value": str(value)}
 
 
 def _build_structured_retry_prompt(
