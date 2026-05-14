@@ -377,11 +377,17 @@ def _summarize_node_state(node_state: Any) -> dict[str, Any]:
 
 def _summarize_final_state(state: Mapping[str, Any] | None) -> dict[str, Any]:
     if state is None:
-        return {"state_keys": [], "summary": {}}
+        return {"state_keys": [], "summary": {}, "result": {}}
 
     return {
         "state_keys": sorted(str(key) for key in state.keys()),
         "summary": _summarize_state(state),
+        "result": {
+            "export_files": state.get("export_files", []),
+            "user_facing_warnings": state.get("user_facing_warnings", []),
+            "validation": state.get("validation", {}),
+            "assembly_report_markdown": state.get("assembly_report_markdown", ""),
+        },
     }
 
 

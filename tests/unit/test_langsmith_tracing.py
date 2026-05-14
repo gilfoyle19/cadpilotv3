@@ -162,3 +162,48 @@ def test_main_configures_langsmith_before_building_pipeline(monkeypatch, capsys)
 
     assert calls == ["configure", "build", "invoke"]
     capsys.readouterr()
+
+
+def test_main_stream_flag_dispatches_to_streaming_runner(monkeypatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def fake_run_streaming_pipeline(user_prompt: str, *, mode: str) -> None:
+        calls.append((user_prompt, mode))
+
+    monkeypatch.setattr(main_module, "run_streaming_pipeline", fake_run_streaming_pipeline)
+
+    main_module.main(
+        [
+            "--stream",
+            "--stream-mode",
+            "readable",
+            "--prompt",
+            "Make a bracket.",
+        ]
+    )
+
+    assert calls == [("Make a bracket.", "readable")]
+
+
+def test_print_streaming_final_result_outputs_exports_and_report(capsys) -> None:
+    event = main_module.PipelineStreamEvent(
+        event_type="pipeline_complete",
+        sequence=10,
+        payload={
+            "result": {
+                "export_files": ["part.step"],
+                "user_facing_warnings": ["Check hole spacing."],
+                "validation": {"status": "success"},
+                "assembly_report_markdown": "# Report\nDone.",
+            }
+        },
+    )
+
+    main_module.print_streaming_final_result(event)
+
+    output = capsys.readouterr().out
+    assert "STREAMING PIPELINE COMPLETED" in output
+    assert "part.step" in output
+    assert "Check hole spacing." in output
+    assert "# Report" in output
+    assert '"status": "success"' in output

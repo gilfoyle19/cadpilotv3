@@ -170,6 +170,8 @@ async def test_astream_pipeline_events_yields_progress_and_completion() -> None:
     assert events[2].payload["summary"]["validation_status"] == "success"
     assert events[2].payload["summary"]["export_count"] == 1
     assert events[3].payload["summary"]["assembly_report_length_chars"] == 4
+    assert events[3].payload["result"]["export_files"] == ["part.step"]
+    assert events[3].payload["result"]["assembly_report_markdown"] == "done"
     assert pipeline.seen_initial_state == {"user_prompt": "Make a bracket."}
 
 
@@ -221,6 +223,8 @@ async def test_astream_pipeline_with_code_events_yields_code_chunks(monkeypatch)
     )
     assert codegen_complete.payload["script"] == streamed_code
     assert events[-1].payload["summary"]["export_count"] == 1
+    assert events[-1].payload["result"]["export_files"] == ["part.step"]
+    assert events[-1].payload["result"]["assembly_report_markdown"] == "done"
 
 
 def test_pipeline_stream_event_to_dict_coerces_payload() -> None:
