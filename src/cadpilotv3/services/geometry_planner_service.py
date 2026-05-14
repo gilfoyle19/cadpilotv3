@@ -30,7 +30,47 @@ class GeometryPlannerService:
             critic_b_replan_instructions=critic_b_replan_instructions,
             repair_replan_instructions=repair_replan_instructions,
         )
+        self._log_geometry_plan_created(
+            geometry_plan=geometry_plan,
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
 
+        return geometry_plan
+
+    async def aexecute(
+        self,
+        spec: IntentSpec,
+        critique: CriticReport | None = None,
+        critic_b_replan_instructions: str | None = None,
+        repair_replan_instructions: str | None = None,
+    ) -> GeometryPlan:
+        logger.info("Running geometry_planner_agent")
+
+        geometry_plan = await self.agent.arun(
+            spec=spec,
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
+        self._log_geometry_plan_created(
+            geometry_plan=geometry_plan,
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
+
+        return geometry_plan
+
+    def _log_geometry_plan_created(
+        self,
+        *,
+        geometry_plan: GeometryPlan,
+        critique: CriticReport | None,
+        critic_b_replan_instructions: str | None,
+        repair_replan_instructions: str | None,
+    ) -> None:
         logger.info(
             "Geometry plan created",
             extra={
@@ -44,5 +84,3 @@ class GeometryPlannerService:
                 ),
             },
         )
-
-        return geometry_plan

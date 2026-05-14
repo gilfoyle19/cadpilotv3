@@ -44,6 +44,10 @@ class PipelineNodes:
         state["spec"] = self.intent_spec_service.execute(state["user_prompt"])
         return state
 
+    async def aintent_spec_agent(self, state: PipelineState) -> PipelineState:
+        state["spec"] = await self.intent_spec_service.aexecute(state["user_prompt"])
+        return state
+
     def geometry_planner_agent(self, state: PipelineState) -> PipelineState:
         critique = None
         if (
@@ -82,6 +86,44 @@ class PipelineNodes:
 
         return state
 
+    async def ageometry_planner_agent(self, state: PipelineState) -> PipelineState:
+        critique = None
+        if (
+            state.get("critic_a_report")
+            and getattr(state["critic_a_report"], "verdict", None) == "fail"
+        ):
+            critique = state["critic_a_report"]
+
+        critic_b_replan_instructions = None
+        critic_b_report = state.get("critic_b_report")
+        if (
+            critic_b_report
+            and getattr(critic_b_report, "routing", None) == "replan"
+            and getattr(critic_b_report, "replan_instructions", None)
+        ):
+            critic_b_replan_instructions = critic_b_report.replan_instructions
+
+        repair_replan_instructions = None
+        repair_decision = state.get("repair_decision")
+        if (
+            repair_decision
+            and getattr(repair_decision, "action", None) == "replan"
+            and getattr(repair_decision, "replan_instructions", None)
+        ):
+            repair_replan_instructions = repair_decision.replan_instructions
+
+        state["geometry_plan"] = await self.geometry_planner_service.aexecute(
+            spec=state["spec"],
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
+
+        if repair_replan_instructions is not None:
+            state["repair_decision"] = None
+
+        return state
+
     def critic_checkpoint_a(self, state: PipelineState) -> PipelineState:
         state["critic_a_report"] = self.critic_checkpoint_a_service.execute(
             user_prompt=state["user_prompt"],
@@ -99,8 +141,34 @@ class PipelineNodes:
 
         return state
 
+    async def acritic_checkpoint_a(self, state: PipelineState) -> PipelineState:
+        state["critic_a_report"] = await self.critic_checkpoint_a_service.aexecute(
+            user_prompt=state["user_prompt"],
+            spec=state["spec"],
+            geometry_plan=state["geometry_plan"],
+            critic_attempt_count=state["critic_a_attempts"],
+        )
+
+        report = state["critic_a_report"]
+        if (
+            getattr(report, "verdict", None) != "pass"
+            and getattr(report, "routing", None) == "replan"
+        ):
+            state["critic_a_attempts"] += 1
+
+        return state
+
     def parameter_agent(self, state: PipelineState) -> PipelineState:
         state["parameters"] = self.parameter_service.execute(
+            user_prompt=state["user_prompt"],
+            spec=state["spec"],
+            geometry_plan=state["geometry_plan"],
+            critic_a_report=state.get("critic_a_report"),
+        )
+        return state
+
+    async def aparameter_agent(self, state: PipelineState) -> PipelineState:
+        state["parameters"] = await self.parameter_service.aexecute(
             user_prompt=state["user_prompt"],
             spec=state["spec"],
             geometry_plan=state["geometry_plan"],
@@ -133,6 +201,31 @@ class PipelineNodes:
 
         return state
 
+    async def acode_generation_infill_agent(self, state: PipelineState) -> PipelineState:
+        critic_feedback = None
+        critic_b_report = state.get("critic_b_report")
+        if (
+            critic_b_report
+            and getattr(critic_b_report, "routing", None) == "patch"
+            and getattr(critic_b_report, "patch_instructions", None)
+        ):
+            critic_feedback = critic_b_report.patch_instructions
+
+        implemented_script = await self.code_generation_infill_service.aexecute_script(
+            spec=state["spec"],
+            geometry_plan=state["geometry_plan"],
+            parameters=state["parameters"],
+            repair_context=state["repair_decision"],
+            critic_feedback=critic_feedback,
+            current_script=state.get("script")
+            if critic_feedback or state.get("repair_decision")
+            else None,
+        )
+
+        state["script"] = implemented_script
+
+        return state
+
     def execution_validation_node(self, state: PipelineState) -> PipelineState:
         artifacts = self.sandbox_service.execute(state["script"])
         state["validation"] = self.execution_validation_llm_agent.run(artifacts)
@@ -148,8 +241,56 @@ class PipelineNodes:
 
         return state
 
+    async def aexecution_validation_node(self, state: PipelineState) -> PipelineState:
+        artifacts = await self.sandbox_service.aexecute(state["script"])
+        state["validation"] = await self.execution_validation_llm_agent.arun(artifacts)
+
+        if state["validation"].status == "success":
+            state["final_geometry"] = {
+                "workspace_dir": artifacts.workspace_dir,
+                "result_object_name": artifacts.result_object_name,
+            }
+            state["repair_decision"] = None
+        else:
+            state["final_geometry"] = None
+
+        return state
+
     def repair_agent(self, state: PipelineState) -> PipelineState:
         decision = self.repair_service.execute(
+            script=state["script"],
+            geometry_plan=state["geometry_plan"],
+            parameters=state["parameters"],
+            validation=state["validation"],
+            repair_attempt_count=state["repair_count"],
+        )
+
+        state["repair_decision"] = decision
+
+        if decision.action == "patch":
+            try:
+                state["script"] = self.code_generation_infill_service.apply_patch(
+                    current_script=state["script"],
+                    affected_function=decision.affected_function,
+                    patched_code=decision.patched_code,
+                )
+            except CodePatchApplicationError as exc:
+                state["repair_decision"] = RepairOutput(
+                    action="regenerate",
+                    root_cause=str(exc),
+                    fix_description=(
+                        "Patch replacement failed, so regenerate the complete "
+                        "script using the current script and validation error."
+                    ),
+                    confidence="medium",
+                )
+
+        state["repair_count"] += 1
+
+        return state
+
+    async def arepair_agent(self, state: PipelineState) -> PipelineState:
+        decision = await self.repair_service.aexecute(
             script=state["script"],
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
@@ -200,8 +341,42 @@ class PipelineNodes:
 
         return state
 
+    async def acritic_checkpoint_b(self, state: PipelineState) -> PipelineState:
+        state["critic_b_report"] = await self.critic_checkpoint_b_service.aexecute(
+            user_prompt=state["user_prompt"],
+            spec=state["spec"],
+            geometry_plan=state["geometry_plan"],
+            parameters=state["parameters"],
+            validation=state["validation"],
+            critic_a_report=state["critic_a_report"],
+            repair_count=state["repair_count"],
+        )
+        state["user_facing_warnings"] = list(
+            getattr(state["critic_b_report"], "user_facing_warnings", []) or []
+        )
+
+        if getattr(state["critic_b_report"], "routing", None) in {"patch", "replan"}:
+            state["critic_b_attempts"] += 1
+
+        return state
+
     def export_summary_agent(self, state: PipelineState) -> PipelineState:
         result = self.export_summary_service.execute(
+            geometry_object=state["final_geometry"],
+            user_prompt=state["user_prompt"],
+            spec=state["spec"],
+            parameters=state["parameters"],
+            validation=state["validation"],
+            critic_b_report=state["critic_b_report"],
+        )
+
+        state["export_files"] = result.export_files
+        state["assembly_report_markdown"] = result.assembly_report_markdown
+        state["user_facing_warnings"] = result.user_facing_warnings
+        return state
+
+    async def aexport_summary_agent(self, state: PipelineState) -> PipelineState:
+        result = await self.export_summary_service.aexecute(
             geometry_object=state["final_geometry"],
             user_prompt=state["user_prompt"],
             spec=state["spec"],

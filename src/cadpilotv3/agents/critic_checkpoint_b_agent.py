@@ -7,7 +7,7 @@ from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.validation import ValidationReport
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
+from cadpilotv3.shared import ainvoke_pydantic, invoke_pydantic, load_prompt_text
 
 
 class CriticCheckpointBAgent:
@@ -26,7 +26,64 @@ class CriticCheckpointBAgent:
         repair_count: int,
     ) -> CriticBReport:
         llm = self.llm_factory.get_for_agent(AgentName.CRITIC_B)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            geometry_plan=geometry_plan,
+            parameters=parameters,
+            validation=validation,
+            critic_a_report=critic_a_report,
+            repair_count=repair_count,
+        )
 
+        return invoke_pydantic(
+            llm,
+            prompt,
+            CriticBReport,
+            agent_name=AgentName.CRITIC_B.value,
+            trace_metadata={"repair_count": repair_count},
+        )
+
+    async def arun(
+        self,
+        user_prompt: str,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_a_report: CriticReport,
+        repair_count: int,
+    ) -> CriticBReport:
+        llm = self.llm_factory.get_for_agent(AgentName.CRITIC_B)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            geometry_plan=geometry_plan,
+            parameters=parameters,
+            validation=validation,
+            critic_a_report=critic_a_report,
+            repair_count=repair_count,
+        )
+
+        return await ainvoke_pydantic(
+            llm,
+            prompt,
+            CriticBReport,
+            agent_name=AgentName.CRITIC_B.value,
+            trace_metadata={"repair_count": repair_count},
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        user_prompt: str,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_a_report: CriticReport,
+        repair_count: int,
+    ) -> str:
         system_prompt = load_prompt_text(self.settings, "critic_checkpoint_b.md")
         few_shot_prompt = load_prompt_text(
             self.settings,
@@ -52,11 +109,4 @@ class CriticCheckpointBAgent:
                 f"Repair history count: {repair_count}",
             ]
         )
-
-        return invoke_pydantic(
-            llm,
-            prompt,
-            CriticBReport,
-            agent_name=AgentName.CRITIC_B.value,
-            trace_metadata={"repair_count": repair_count},
-        )
+        return prompt

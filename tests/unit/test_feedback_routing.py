@@ -11,6 +11,7 @@ from cadpilotv3.services.code_generation_infill_service import (
     CodeGenerationOutputError,
     CodePatchApplicationError,
 )
+from cadpilotv3.shared import LLMTextResult, LLMTextStreamChunk
 
 
 def test_codegen_node_passes_critic_b_patch_instructions() -> None:
@@ -253,6 +254,131 @@ def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
     assert "import cadquery as cq" in script
     assert len(service.agent.calls) == 2
     assert service.agent.calls[0]["generation_feedback"] is None
+    assert service.agent.calls[1]["generation_feedback"] == (
+        "Code generation returned an empty script"
+    )
+    assert service.agent.calls[1]["compact_retry"] is True
+
+
+async def test_astream_script_yields_code_chunks_and_complete_event(tmp_path) -> None:
+    valid_chunks = [
+        "import cadquery as cq\n",
+        "def build_part():\n    return cq.Workplane('XY').box(1, 1, 1)\n",
+        "def validate_geometry(model):\n    return {}\n",
+        "def export_all(model, output_dir='.'): \n    return []\n",
+        "if __name__ == '__main__':\n    model = build_part()\n",
+    ]
+
+    class FakeAgent:
+        async def astream(self, **kwargs):
+            text = "".join(valid_chunks)
+            for chunk in valid_chunks:
+                yield LLMTextStreamChunk(text=chunk)
+            yield LLMTextStreamChunk(
+                text="",
+                result=LLMTextResult(
+                    text=text,
+                    response_metadata={},
+                    usage_metadata=None,
+                    response_id=None,
+                    raw_response_repr="<streamed response>",
+                ),
+            )
+
+    service = object.__new__(CodeGenerationInfillService)
+    service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
+    service.agent = FakeAgent()
+
+    events = [
+        event
+        async for event in service.astream_script(
+            spec=SimpleNamespace(component="test_part"),
+            geometry_plan=object(),
+            parameters=object(),
+        )
+    ]
+
+    assert [event.event_type for event in events] == [
+        "code_generation_start",
+        "code_chunk",
+        "code_chunk",
+        "code_chunk",
+        "code_chunk",
+        "code_chunk",
+        "code_generation_complete",
+    ]
+    streamed_text = "".join(
+        event.payload["text"]
+        for event in events
+        if event.event_type == "code_chunk"
+    )
+    assert streamed_text.startswith("import cadquery as cq")
+    assert events[-1].payload["script"] == streamed_text
+
+
+async def test_astream_script_retries_after_empty_streamed_generation(tmp_path) -> None:
+    class FakeAgent:
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def astream(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                text = "```python\n\n```"
+                yield LLMTextStreamChunk(text=text)
+                yield LLMTextStreamChunk(
+                    text="",
+                    result=LLMTextResult(
+                        text=text,
+                        response_metadata={},
+                        usage_metadata=None,
+                        response_id=None,
+                        raw_response_repr="<empty response>",
+                    ),
+                )
+                return
+
+            text = "\n".join(
+                [
+                    "import cadquery as cq",
+                    "def build_part():",
+                    "    return cq.Workplane('XY').box(1, 1, 1)",
+                    "def validate_geometry(model):",
+                    "    return {}",
+                    "def export_all(model, output_dir='.'):",
+                    "    return []",
+                    "if __name__ == '__main__':",
+                    "    model = build_part()",
+                    "",
+                ]
+            )
+            yield LLMTextStreamChunk(text=text)
+            yield LLMTextStreamChunk(
+                text="",
+                result=LLMTextResult(
+                    text=text,
+                    response_metadata={},
+                    usage_metadata=None,
+                    response_id=None,
+                    raw_response_repr="<valid response>",
+                ),
+            )
+
+    service = object.__new__(CodeGenerationInfillService)
+    service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
+    service.agent = FakeAgent()
+
+    events = [
+        event
+        async for event in service.astream_script(
+            spec=SimpleNamespace(component="test_part"),
+            geometry_plan=object(),
+            parameters=object(),
+        )
+    ]
+
+    assert "code_generation_retry" in [event.event_type for event in events]
+    assert events[-1].event_type == "code_generation_complete"
     assert service.agent.calls[1]["generation_feedback"] == (
         "Code generation returned an empty script"
     )

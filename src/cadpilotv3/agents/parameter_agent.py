@@ -8,7 +8,7 @@ from cadpilotv3.schemas.critic import CriticReport
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.schemas.parameters import ParameterSchema
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
+from cadpilotv3.shared import ainvoke_pydantic, invoke_pydantic, load_prompt_text
 
 
 class ParameterAgent:
@@ -24,14 +24,57 @@ class ParameterAgent:
         critic_a_report: CriticReport | None = None,
     ) -> ParameterSchema:
         llm = self.llm_factory.get_for_agent(AgentName.PARAMETER)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            geometry_plan=geometry_plan,
+            critic_a_report=critic_a_report,
+        )
 
+        return invoke_pydantic(
+            llm,
+            prompt,
+            ParameterSchema,
+            agent_name=AgentName.PARAMETER.value,
+        )
+
+    async def arun(
+        self,
+        user_prompt: str,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        critic_a_report: CriticReport | None = None,
+    ) -> ParameterSchema:
+        llm = self.llm_factory.get_for_agent(AgentName.PARAMETER)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            geometry_plan=geometry_plan,
+            critic_a_report=critic_a_report,
+        )
+
+        return await ainvoke_pydantic(
+            llm,
+            prompt,
+            ParameterSchema,
+            agent_name=AgentName.PARAMETER.value,
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        user_prompt: str,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        critic_a_report: CriticReport | None,
+    ) -> str:
         system_prompt = load_prompt_text(self.settings, "parameter_agent.md")
         few_shot_prompt = load_prompt_text(
             self.settings,
             "parameter_agent_examples.md",
         )
 
-        prompt = "\n\n".join(
+        return "\n\n".join(
             [
                 system_prompt.strip(),
                 few_shot_prompt.strip(),
@@ -50,13 +93,6 @@ class ParameterAgent:
                     else "{}"
                 ),
             ]
-        )
-
-        return invoke_pydantic(
-            llm,
-            prompt,
-            ParameterSchema,
-            agent_name=AgentName.PARAMETER.value,
         )
 
     def _extract_numeric_fact_sentences(self, user_prompt: str) -> list[str]:

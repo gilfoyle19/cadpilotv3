@@ -16,6 +16,19 @@ class IntentSpecService:
         logger.info("Running intent_spec_agent")
 
         spec = self.agent.run(user_prompt)
+        self._log_spec_created(spec)
+
+        return spec
+
+    async def aexecute(self, user_prompt: str):
+        logger.info("Running intent_spec_agent")
+
+        spec = await self.agent.arun(user_prompt)
+        self._log_spec_created(spec)
+
+        return spec
+
+    def _log_spec_created(self, spec) -> None:
 
         logger.info(
             "Intent specification created",
@@ -27,5 +40,3 @@ class IntentSpecService:
                 "clarifications_needed_count": len(spec.clarifications_needed),
             },
         )
-
-        return spec

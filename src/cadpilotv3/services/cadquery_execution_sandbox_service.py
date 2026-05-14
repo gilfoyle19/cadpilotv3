@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import contextlib
 import io
 import json
@@ -156,6 +157,9 @@ class CadQueryExecutionSandboxService:
         )
 
         return artifacts
+
+    async def aexecute(self, script: str) -> SandboxExecutionArtifacts:
+        return await asyncio.to_thread(self.execute, script)
 
     def _precheck_syntax(self, script: str) -> dict[str, Any] | None:
         try:

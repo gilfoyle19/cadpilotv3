@@ -5,7 +5,7 @@ from cadpilotv3.llm import AgentName, get_llm_factory
 from cadpilotv3.schemas.critic import CriticReport
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
+from cadpilotv3.shared import ainvoke_pydantic, invoke_pydantic, load_prompt_text
 
 
 class GeometryPlannerAgent:
@@ -21,7 +21,50 @@ class GeometryPlannerAgent:
         repair_replan_instructions: str | None = None,
     ) -> GeometryPlan:
         llm = self.llm_factory.get_for_agent(AgentName.GEOMETRY_PLANNER)
+        prompt = self._build_prompt(
+            spec=spec,
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
 
+        return invoke_pydantic(
+            llm,
+            prompt,
+            GeometryPlan,
+            agent_name=AgentName.GEOMETRY_PLANNER.value,
+        )
+
+    async def arun(
+        self,
+        spec: IntentSpec,
+        critique: CriticReport | None = None,
+        critic_b_replan_instructions: str | None = None,
+        repair_replan_instructions: str | None = None,
+    ) -> GeometryPlan:
+        llm = self.llm_factory.get_for_agent(AgentName.GEOMETRY_PLANNER)
+        prompt = self._build_prompt(
+            spec=spec,
+            critique=critique,
+            critic_b_replan_instructions=critic_b_replan_instructions,
+            repair_replan_instructions=repair_replan_instructions,
+        )
+
+        return await ainvoke_pydantic(
+            llm,
+            prompt,
+            GeometryPlan,
+            agent_name=AgentName.GEOMETRY_PLANNER.value,
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        spec: IntentSpec,
+        critique: CriticReport | None,
+        critic_b_replan_instructions: str | None,
+        repair_replan_instructions: str | None,
+    ) -> str:
         system_prompt = load_prompt_text(self.settings, "geometry_planner_agent.md")
         few_shot_prompt = load_prompt_text(
             self.settings,
@@ -69,11 +112,4 @@ class GeometryPlannerAgent:
                 ]
             )
 
-        prompt = "\n\n".join(prompt_sections)
-
-        return invoke_pydantic(
-            llm,
-            prompt,
-            GeometryPlan,
-            agent_name=AgentName.GEOMETRY_PLANNER.value,
-        )
+        return "\n\n".join(prompt_sections)

@@ -1,4 +1,5 @@
 from cadpilotv3.services.langsmith import (
+    ainvoke_traced_pipeline,
     build_run_metadata,
     configure_langsmith,
     get_langsmith_client,
@@ -8,6 +9,7 @@ from cadpilotv3.services.langsmith import (
 )
 
 __all__ = [
+    "ainvoke_traced_pipeline",
     "build_run_metadata",
     "configure_langsmith",
     "get_langsmith_client",

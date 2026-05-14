@@ -143,6 +143,30 @@ class WebResearchService:
             )
             return WebResearchContext(warning=str(exc))
 
+    async def aresearch_if_needed(self, user_prompt: str) -> WebResearchContext:
+        if not self.needs_research(user_prompt):
+            return WebResearchContext()
+
+        if not self.settings.intent_web_research_enabled:
+            logger.info("Intent web research skipped because it is disabled")
+            return WebResearchContext()
+
+        if self.settings.llm_provider.lower() != "openai":
+            logger.info(
+                "Intent web research skipped because provider does not support it",
+                extra={"llm_provider": self.settings.llm_provider},
+            )
+            return WebResearchContext()
+
+        try:
+            return await self._arun_openai_web_search(user_prompt)
+        except Exception as exc:
+            logger.warning(
+                "Intent web research failed; continuing without research context",
+                extra={"error_class": type(exc).__name__, "reason": str(exc)},
+            )
+            return WebResearchContext(warning=str(exc))
+
     def needs_research(self, user_prompt: str) -> bool:
         normalized = user_prompt.casefold()
         if any(re.search(pattern, normalized) for pattern in NO_RESEARCH_PATTERNS):
@@ -166,6 +190,39 @@ class WebResearchService:
         client = OpenAI(**kwargs)
         prompt = self._build_research_prompt(user_prompt)
         response = client.responses.create(
+            model=self.settings.intent_web_research_model or self.settings.llm_model,
+            input=prompt,
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": self.settings.intent_web_research_context_size,
+                }
+            ],
+            include=["web_search_call.action.sources"],
+            max_output_tokens=self.settings.intent_web_research_max_output_tokens,
+            temperature=0,
+        )
+
+        response_text = getattr(response, "output_text", "") or ""
+        context = self._parse_research_response(response_text)
+        response_sources = self._extract_response_sources(response)
+        context.sources = self._dedupe([*context.sources, *response_sources])
+        return context
+
+    async def _arun_openai_web_search(self, user_prompt: str) -> WebResearchContext:
+        from openai import AsyncOpenAI
+
+        kwargs: dict[str, Any] = {
+            "timeout": self.settings.intent_web_research_timeout_seconds,
+        }
+        if self.settings.openai_api_key:
+            kwargs["api_key"] = self.settings.openai_api_key
+        if self.settings.openai_base_url:
+            kwargs["base_url"] = self.settings.openai_base_url
+
+        client = AsyncOpenAI(**kwargs)
+        prompt = self._build_research_prompt(user_prompt)
+        response = await client.responses.create(
             model=self.settings.intent_web_research_model or self.settings.llm_model,
             input=prompt,
             tools=[

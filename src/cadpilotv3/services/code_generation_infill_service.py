@@ -5,7 +5,10 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Literal
 
 from cadpilotv3.agents.code_generation_infill_agent import (
     CodeGenerationInfillAgent,
@@ -27,6 +30,22 @@ class CodeGenerationOutputError(ValueError):
 
 class CodePatchApplicationError(ValueError):
     """Raised when a repair patch cannot be applied without corrupting the script."""
+
+
+CodeGenerationStreamEventType = Literal[
+    "code_generation_start",
+    "code_chunk",
+    "code_generation_retry",
+    "code_generation_complete",
+    "code_generation_error",
+]
+
+
+@dataclass(frozen=True)
+class CodeGenerationStreamEvent:
+    event_type: CodeGenerationStreamEventType
+    attempt_number: int
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 class CodeGenerationInfillService:
@@ -129,6 +148,247 @@ class CodeGenerationInfillService:
             return implemented_script
 
         raise last_error or CodeGenerationOutputError("Code generation failed validation")
+
+    async def aexecute_script(
+        self,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        repair_context: RepairOutput | None = None,
+        critic_feedback: str | None = None,
+        current_script: str | None = None,
+    ) -> str:
+        logger.info(
+            "Running code_generation_agent for complete script",
+            extra={"component": getattr(spec, "component", None)},
+        )
+
+        generation_feedback = None
+        last_error: CodeGenerationOutputError | None = None
+        compact_retry = False
+
+        for attempt_number in range(1, self.max_generation_attempts + 1):
+            llm_result = coerce_llm_text_result(
+                await self.agent.arun(
+                    spec=spec,
+                    geometry_plan=geometry_plan,
+                    parameters=parameters,
+                    repair_context=repair_context,
+                    critic_feedback=critic_feedback,
+                    current_script=current_script,
+                    generation_feedback=generation_feedback,
+                    compact_retry=compact_retry,
+                )
+            )
+            implemented_script = self._extract_generated_code(llm_result.text)
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={
+                    "extracted_script_length_chars": len(implemented_script),
+                },
+                files={"extracted_script.py": implemented_script},
+            )
+
+            try:
+                self._validate_generated_code(implemented_script)
+            except CodeGenerationOutputError as exc:
+                last_error = exc
+                generation_feedback = str(exc)
+                compact_retry = self._should_use_compact_retry(exc)
+                update_llm_trace(
+                    llm_result.trace_dir,
+                    metadata_updates={
+                        "validation_status": "failed",
+                        "validation_error": str(exc),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                artifact_path = self._write_failed_attempt(
+                    llm_result=llm_result,
+                    implemented_script=implemented_script,
+                    attempt_number=attempt_number,
+                    reason=str(exc),
+                    compact_retry=compact_retry,
+                )
+                logger.warning(
+                    (
+                        "Code generation returned unusable output; retrying "
+                        f"reason={exc}"
+                    ),
+                    extra={
+                        "attempt_number": attempt_number,
+                        "max_attempts": self.max_generation_attempts,
+                        "reason": str(exc),
+                        "artifact_path": str(artifact_path) if artifact_path else None,
+                        "raw_response_length_chars": len(llm_result.text),
+                        "extracted_script_length_chars": len(implemented_script),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                continue
+
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={"validation_status": "passed"},
+            )
+            logger.info(
+                "Implemented complete CadQuery script",
+                extra={
+                    "output_length_chars": len(implemented_script),
+                    "attempt_number": attempt_number,
+                },
+            )
+
+            return implemented_script
+
+        raise last_error or CodeGenerationOutputError("Code generation failed validation")
+
+    async def astream_script(
+        self,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        repair_context: RepairOutput | None = None,
+        critic_feedback: str | None = None,
+        current_script: str | None = None,
+    ) -> AsyncIterator[CodeGenerationStreamEvent]:
+        logger.info(
+            "Streaming code_generation_agent for complete script",
+            extra={"component": getattr(spec, "component", None)},
+        )
+
+        generation_feedback = None
+        last_error: CodeGenerationOutputError | None = None
+        compact_retry = False
+
+        for attempt_number in range(1, self.max_generation_attempts + 1):
+            yield CodeGenerationStreamEvent(
+                event_type="code_generation_start",
+                attempt_number=attempt_number,
+                payload={
+                    "compact_retry": compact_retry,
+                    "has_generation_feedback": generation_feedback is not None,
+                },
+            )
+
+            llm_result: LLMTextResult | None = None
+            async for stream_chunk in self.agent.astream(
+                spec=spec,
+                geometry_plan=geometry_plan,
+                parameters=parameters,
+                repair_context=repair_context,
+                critic_feedback=critic_feedback,
+                current_script=current_script,
+                generation_feedback=generation_feedback,
+                compact_retry=compact_retry,
+            ):
+                if stream_chunk.result is not None:
+                    llm_result = stream_chunk.result
+                    continue
+                if stream_chunk.text:
+                    yield CodeGenerationStreamEvent(
+                        event_type="code_chunk",
+                        attempt_number=attempt_number,
+                        payload={"text": stream_chunk.text},
+                    )
+
+            if llm_result is None:
+                llm_result = LLMTextResult(
+                    text="",
+                    response_metadata={},
+                    usage_metadata=None,
+                    response_id=None,
+                    raw_response_repr="",
+                    trace_dir=None,
+                )
+
+            implemented_script = self._extract_generated_code(llm_result.text)
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={
+                    "extracted_script_length_chars": len(implemented_script),
+                },
+                files={"extracted_script.py": implemented_script},
+            )
+
+            try:
+                self._validate_generated_code(implemented_script)
+            except CodeGenerationOutputError as exc:
+                last_error = exc
+                generation_feedback = str(exc)
+                compact_retry = self._should_use_compact_retry(exc)
+                update_llm_trace(
+                    llm_result.trace_dir,
+                    metadata_updates={
+                        "validation_status": "failed",
+                        "validation_error": str(exc),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                artifact_path = self._write_failed_attempt(
+                    llm_result=llm_result,
+                    implemented_script=implemented_script,
+                    attempt_number=attempt_number,
+                    reason=str(exc),
+                    compact_retry=compact_retry,
+                )
+                logger.warning(
+                    (
+                        "Code generation returned unusable output; retrying "
+                        f"reason={exc}"
+                    ),
+                    extra={
+                        "attempt_number": attempt_number,
+                        "max_attempts": self.max_generation_attempts,
+                        "reason": str(exc),
+                        "artifact_path": str(artifact_path) if artifact_path else None,
+                        "raw_response_length_chars": len(llm_result.text),
+                        "extracted_script_length_chars": len(implemented_script),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                yield CodeGenerationStreamEvent(
+                    event_type="code_generation_retry",
+                    attempt_number=attempt_number,
+                    payload={
+                        "reason": str(exc),
+                        "compact_retry_next": compact_retry,
+                        "will_retry": attempt_number < self.max_generation_attempts,
+                    },
+                )
+                continue
+
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={"validation_status": "passed"},
+            )
+            logger.info(
+                "Implemented complete CadQuery script",
+                extra={
+                    "output_length_chars": len(implemented_script),
+                    "attempt_number": attempt_number,
+                },
+            )
+            yield CodeGenerationStreamEvent(
+                event_type="code_generation_complete",
+                attempt_number=attempt_number,
+                payload={
+                    "script": implemented_script,
+                    "script_length_chars": len(implemented_script),
+                },
+            )
+            return
+
+        error = last_error or CodeGenerationOutputError("Code generation failed validation")
+        yield CodeGenerationStreamEvent(
+            event_type="code_generation_error",
+            attempt_number=self.max_generation_attempts,
+            payload={
+                "error_class": type(error).__name__,
+                "error_message": str(error),
+            },
+        )
+        raise error
 
     def _should_use_compact_retry(self, error: CodeGenerationOutputError) -> bool:
         return "empty script" in str(error).lower()

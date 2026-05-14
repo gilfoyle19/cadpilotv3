@@ -8,7 +8,7 @@ from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.repair import RepairOutput
 from cadpilotv3.schemas.validation import ValidationReport
-from cadpilotv3.shared import invoke_pydantic, load_prompt_text
+from cadpilotv3.shared import ainvoke_pydantic, invoke_pydantic, load_prompt_text
 
 
 class RepairAgent:
@@ -25,7 +25,56 @@ class RepairAgent:
         repair_attempt_count: int,
     ) -> RepairOutput:
         llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
+        prompt = self._build_prompt(
+            script=script,
+            geometry_plan=geometry_plan,
+            parameters=parameters,
+            validation=validation,
+            repair_attempt_count=repair_attempt_count,
+        )
 
+        return invoke_pydantic(
+            llm,
+            prompt,
+            RepairOutput,
+            agent_name=AgentName.REPAIR.value,
+            trace_metadata={"repair_attempt_count": repair_attempt_count},
+        )
+
+    async def arun(
+        self,
+        script: str,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        repair_attempt_count: int,
+    ) -> RepairOutput:
+        llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
+        prompt = self._build_prompt(
+            script=script,
+            geometry_plan=geometry_plan,
+            parameters=parameters,
+            validation=validation,
+            repair_attempt_count=repair_attempt_count,
+        )
+
+        return await ainvoke_pydantic(
+            llm,
+            prompt,
+            RepairOutput,
+            agent_name=AgentName.REPAIR.value,
+            trace_metadata={"repair_attempt_count": repair_attempt_count},
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        script: str,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        repair_attempt_count: int,
+    ) -> str:
         system_prompt = load_prompt_text(self.settings, "repair_agent.md")
         few_shot_prompt = load_prompt_text(
             self.settings,
@@ -57,14 +106,7 @@ class RepairAgent:
                 f"Repair attempt count: {repair_attempt_count}",
             ]
         )
-
-        return invoke_pydantic(
-            llm,
-            prompt,
-            RepairOutput,
-            agent_name=AgentName.REPAIR.value,
-            trace_metadata={"repair_attempt_count": repair_attempt_count},
-        )
+        return prompt
 
     def _select_relevant_cheatsheet(
         self,
