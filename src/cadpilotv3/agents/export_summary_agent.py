@@ -16,6 +16,7 @@ from cadpilotv3.schemas.parameters import ParameterSchema
 from cadpilotv3.schemas.validation import ValidationReport
 from cadpilotv3.shared import (
     JSONExtractionError,
+    ainvoke_text_with_metadata,
     invoke_text_with_metadata,
     load_prompt_text,
     parse_json,
@@ -39,7 +40,68 @@ class ExportSummaryAgent:
         export_files: list[ExportedFile],
     ) -> ExportSummary:
         llm = self.llm_factory.get_for_agent(AgentName.EXPORT_SUMMARY)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            parameters=parameters,
+            validation=validation,
+            critic_b_report=critic_b_report,
+            export_files=export_files,
+        )
 
+        result = invoke_text_with_metadata(
+            llm,
+            prompt,
+            agent_name=AgentName.EXPORT_SUMMARY.value,
+        )
+        return self._parse_result(
+            result_text=result.text,
+            trace_dir=result.trace_dir,
+            export_files=export_files,
+            critic_b_report=critic_b_report,
+        )
+
+    async def arun(
+        self,
+        user_prompt: str,
+        spec: IntentSpec,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_b_report: CriticBReport,
+        export_files: list[ExportedFile],
+    ) -> ExportSummary:
+        llm = self.llm_factory.get_for_agent(AgentName.EXPORT_SUMMARY)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            spec=spec,
+            parameters=parameters,
+            validation=validation,
+            critic_b_report=critic_b_report,
+            export_files=export_files,
+        )
+
+        result = await ainvoke_text_with_metadata(
+            llm,
+            prompt,
+            agent_name=AgentName.EXPORT_SUMMARY.value,
+        )
+        return self._parse_result(
+            result_text=result.text,
+            trace_dir=result.trace_dir,
+            export_files=export_files,
+            critic_b_report=critic_b_report,
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        user_prompt: str,
+        spec: IntentSpec,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_b_report: CriticBReport,
+        export_files: list[ExportedFile],
+    ) -> str:
         system_prompt = load_prompt_text(self.settings, "export_summary_agent.md")
         few_shot_prompt = load_prompt_text(
             self.settings,
@@ -69,18 +131,21 @@ class ExportSummaryAgent:
                 json.dumps(export_files_json, indent=2),
             ]
         )
+        return prompt
 
-        result = invoke_text_with_metadata(
-            llm,
-            prompt,
-            agent_name=AgentName.EXPORT_SUMMARY.value,
-        )
-        response_text = result.text
+    def _parse_result(
+        self,
+        *,
+        result_text: str,
+        trace_dir: str | None,
+        export_files: list[ExportedFile],
+        critic_b_report: CriticBReport,
+    ) -> ExportSummary:
         try:
-            parsed_json = parse_json(response_text)
+            parsed_json = parse_json(result_text)
             summary = ExportSummary.model_validate(parsed_json)
             update_llm_trace(
-                result.trace_dir,
+                trace_dir,
                 metadata_updates={
                     "parse_status": "passed",
                     "validation_status": "passed",
@@ -94,14 +159,14 @@ class ExportSummaryAgent:
             return summary
         except JSONExtractionError:
             update_llm_trace(
-                result.trace_dir,
+                trace_dir,
                 metadata_updates={
                     "parse_status": "failed",
                     "validation_status": "fallback_markdown",
                     "schema": ExportSummary.__name__,
                 },
             )
-            markdown_report = strip_code_fences(response_text)
+            markdown_report = strip_code_fences(result_text)
             return ExportSummary(
                 export_files=export_files,
                 assembly_report_markdown=markdown_report,
@@ -109,7 +174,7 @@ class ExportSummaryAgent:
             )
         except ValidationError as exc:
             update_llm_trace(
-                result.trace_dir,
+                trace_dir,
                 metadata_updates={
                     "parse_status": "passed",
                     "validation_status": "failed",

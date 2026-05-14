@@ -31,12 +31,33 @@ class ParameterService:
             geometry_plan=geometry_plan,
             critic_a_report=critic_a_report,
         )
+        self._log_parameters_created(parameters)
 
+        return parameters
+
+    async def aexecute(
+        self,
+        user_prompt: str,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        critic_a_report: CriticReport | None = None,
+    ) -> ParameterSchema:
+        logger.info("Running parameter_agent")
+
+        parameters = await self.agent.arun(
+            user_prompt=user_prompt,
+            spec=spec,
+            geometry_plan=geometry_plan,
+            critic_a_report=critic_a_report,
+        )
+        self._log_parameters_created(parameters)
+
+        return parameters
+
+    def _log_parameters_created(self, parameters: ParameterSchema) -> None:
         logger.info(
             "Parameter schema created",
             extra={
                 "parameter_count": len(parameters.parameters),
             },
         )
-
-        return parameters

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 from pathlib import Path
@@ -79,13 +80,108 @@ class ExportSummaryService:
             critic_b_report=critic_b_report,
             export_files=export_files,
         )
+        self._fill_summary_defaults(
+            result=result,
+            export_files=export_files,
+            critic_b_report=critic_b_report,
+        )
 
+        self._log_summary_completed(result)
+
+        return result
+
+    async def aexecute(
+        self,
+        geometry_object: Any,
+        user_prompt: str,
+        spec: IntentSpec,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_b_report: CriticBReport,
+    ) -> ExportSummary:
+        logger.info(
+            "Running geometry export before export_summary_agent",
+            extra={
+                "component": spec.component,
+                "output_format": spec.output_format,
+            },
+        )
+
+        export_files = await asyncio.to_thread(
+            self._prepare_export_files,
+            geometry_object,
+            spec.component,
+            spec.output_format,
+        )
+
+        logger.info(
+            "Geometry export completed",
+            extra={"export_file_count": len(export_files)},
+        )
+
+        result = await self.agent.arun(
+            user_prompt=user_prompt,
+            spec=spec,
+            parameters=parameters,
+            validation=validation,
+            critic_b_report=critic_b_report,
+            export_files=export_files,
+        )
+        self._fill_summary_defaults(
+            result=result,
+            export_files=export_files,
+            critic_b_report=critic_b_report,
+        )
+
+        self._log_summary_completed(result)
+
+        return result
+
+    def _prepare_export_files(
+        self,
+        geometry_object: Any,
+        component_name: str,
+        output_format: str,
+    ) -> list[ExportedFile]:
+        export_files = self._collect_sandbox_exports(
+            geometry_object=geometry_object,
+            output_format=output_format,
+        )
+
+        if export_files:
+            return export_files
+
+        export_artifacts = self.exporter.export(
+            geometry_object=geometry_object,
+            component_name=component_name,
+            output_format=output_format,
+        )
+
+        return [
+            ExportedFile(
+                format=artifact.format,
+                filename=artifact.filename,
+                filepath=artifact.filepath,
+                size_kb=artifact.size_kb,
+                contents=artifact.contents,
+            )
+            for artifact in export_artifacts
+        ]
+
+    def _fill_summary_defaults(
+        self,
+        *,
+        result: ExportSummary,
+        export_files: list[ExportedFile],
+        critic_b_report: CriticBReport,
+    ) -> None:
         if not result.export_files:
             result.export_files = export_files
 
         if not result.user_facing_warnings:
             result.user_facing_warnings = critic_b_report.user_facing_warnings
 
+    def _log_summary_completed(self, result: ExportSummary) -> None:
         logger.info(
             "Export summary completed",
             extra={
@@ -93,8 +189,6 @@ class ExportSummaryService:
                 "export_file_count": len(result.export_files),
             },
         )
-
-        return result
 
     def _collect_sandbox_exports(
         self,

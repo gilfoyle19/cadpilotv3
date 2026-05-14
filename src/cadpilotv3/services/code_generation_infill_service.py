@@ -130,6 +130,100 @@ class CodeGenerationInfillService:
 
         raise last_error or CodeGenerationOutputError("Code generation failed validation")
 
+    async def aexecute_script(
+        self,
+        spec: IntentSpec,
+        geometry_plan: GeometryPlan,
+        parameters: ParameterSchema,
+        repair_context: RepairOutput | None = None,
+        critic_feedback: str | None = None,
+        current_script: str | None = None,
+    ) -> str:
+        logger.info(
+            "Running code_generation_agent for complete script",
+            extra={"component": getattr(spec, "component", None)},
+        )
+
+        generation_feedback = None
+        last_error: CodeGenerationOutputError | None = None
+        compact_retry = False
+
+        for attempt_number in range(1, self.max_generation_attempts + 1):
+            llm_result = coerce_llm_text_result(
+                await self.agent.arun(
+                    spec=spec,
+                    geometry_plan=geometry_plan,
+                    parameters=parameters,
+                    repair_context=repair_context,
+                    critic_feedback=critic_feedback,
+                    current_script=current_script,
+                    generation_feedback=generation_feedback,
+                    compact_retry=compact_retry,
+                )
+            )
+            implemented_script = self._extract_generated_code(llm_result.text)
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={
+                    "extracted_script_length_chars": len(implemented_script),
+                },
+                files={"extracted_script.py": implemented_script},
+            )
+
+            try:
+                self._validate_generated_code(implemented_script)
+            except CodeGenerationOutputError as exc:
+                last_error = exc
+                generation_feedback = str(exc)
+                compact_retry = self._should_use_compact_retry(exc)
+                update_llm_trace(
+                    llm_result.trace_dir,
+                    metadata_updates={
+                        "validation_status": "failed",
+                        "validation_error": str(exc),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                artifact_path = self._write_failed_attempt(
+                    llm_result=llm_result,
+                    implemented_script=implemented_script,
+                    attempt_number=attempt_number,
+                    reason=str(exc),
+                    compact_retry=compact_retry,
+                )
+                logger.warning(
+                    (
+                        "Code generation returned unusable output; retrying "
+                        f"reason={exc}"
+                    ),
+                    extra={
+                        "attempt_number": attempt_number,
+                        "max_attempts": self.max_generation_attempts,
+                        "reason": str(exc),
+                        "artifact_path": str(artifact_path) if artifact_path else None,
+                        "raw_response_length_chars": len(llm_result.text),
+                        "extracted_script_length_chars": len(implemented_script),
+                        "compact_retry_next": compact_retry,
+                    },
+                )
+                continue
+
+            update_llm_trace(
+                llm_result.trace_dir,
+                metadata_updates={"validation_status": "passed"},
+            )
+            logger.info(
+                "Implemented complete CadQuery script",
+                extra={
+                    "output_length_chars": len(implemented_script),
+                    "attempt_number": attempt_number,
+                },
+            )
+
+            return implemented_script
+
+        raise last_error or CodeGenerationOutputError("Code generation failed validation")
+
     def _should_use_compact_retry(self, error: CodeGenerationOutputError) -> bool:
         return "empty script" in str(error).lower()
 
