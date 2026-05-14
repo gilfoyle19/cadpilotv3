@@ -3,7 +3,11 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from cadpilotv3.services.langsmith import configure_langsmith, invoke_traced_pipeline
+from cadpilotv3.services.langsmith import (
+    ainvoke_traced_pipeline,
+    configure_langsmith,
+    invoke_traced_pipeline,
+)
 
 MAIN_PATH = Path(__file__).resolve().parents[2] / "main.py"
 MAIN_SPEC = importlib.util.spec_from_file_location("cadpilotv3_main", MAIN_PATH)
@@ -20,6 +24,16 @@ class FakePipeline:
 
     def invoke(self, initial_state: dict) -> dict:
         self.invoked_with = initial_state
+        return self.result
+
+
+class FakeAsyncPipeline:
+    def __init__(self, result: dict) -> None:
+        self.result = result
+        self.ainvoked_with: dict | None = None
+
+    async def ainvoke(self, initial_state: dict) -> dict:
+        self.ainvoked_with = initial_state
         return self.result
 
 
@@ -85,6 +99,33 @@ def test_invoke_traced_pipeline_invokes_pipeline_without_serializing_pipeline_in
 
     assert result["export_files"] == ["part.step"]
     assert pipeline.invoked_with == initial_state
+
+
+async def test_ainvoke_traced_pipeline_invokes_pipeline_ainvoke(monkeypatch) -> None:
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("LANGSMITH_TRACING_V2", "false")
+    pipeline = FakeAsyncPipeline(
+        {
+            "export_files": ["part.step"],
+            "user_facing_warnings": [],
+            "validation": {"status": "passed"},
+            "repair_count": 0,
+            "critic_a_attempts": 1,
+            "critic_b_attempts": 1,
+            "assembly_report_markdown": "done",
+        }
+    )
+    initial_state = {"user_prompt": "Make a bracket.", "script": ""}
+
+    result = await ainvoke_traced_pipeline(
+        pipeline,
+        initial_state,
+        run_id="run-123",
+        user_prompt="Make a bracket.",
+    )
+
+    assert result["export_files"] == ["part.step"]
+    assert pipeline.ainvoked_with == initial_state
 
 
 def test_main_configures_langsmith_before_building_pipeline(monkeypatch, capsys) -> None:

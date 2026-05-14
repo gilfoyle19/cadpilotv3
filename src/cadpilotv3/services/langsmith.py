@@ -95,6 +95,22 @@ def invoke_traced_pipeline(
     return pipeline.invoke(initial_state)
 
 
+@traceable(
+    run_type="chain",
+    name="cadpilotv3_async_pipeline",
+    process_inputs=_pipeline_trace_inputs,
+    process_outputs=_pipeline_trace_outputs,
+)
+async def ainvoke_traced_pipeline(
+    pipeline: Any,
+    initial_state: dict[str, Any],
+    *,
+    run_id: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    return await pipeline.ainvoke(initial_state)
+
+
 @traceable(run_type="chain", name="cadpilotv3_pipeline")
 def traced_pipeline_call(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
