@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -28,6 +29,16 @@ class LLMTextResult:
     response_id: str | None
     raw_response_repr: str
     trace_dir: str | None = None
+
+
+@dataclass(frozen=True)
+class LLMTextStreamChunk:
+    text: str
+    result: LLMTextResult | None = None
+
+    @property
+    def is_final(self) -> bool:
+        return self.result is not None
 
 
 def get_message_text(response: Any) -> str:
@@ -110,6 +121,47 @@ async def ainvoke_text_with_metadata(
         agent_name=agent_name,
         trace_metadata=trace_metadata,
     )
+
+
+async def astream_text_with_metadata(
+    llm: Any,
+    prompt: str,
+    *,
+    agent_name: str | None = None,
+    trace_metadata: dict[str, Any] | None = None,
+) -> AsyncIterator[LLMTextStreamChunk]:
+    text_parts: list[str] = []
+    raw_chunk_reprs: list[str] = []
+    last_chunk: Any = None
+    chunk_count = 0
+
+    async for chunk in _astream_llm(llm, prompt):
+        last_chunk = chunk
+        raw_chunk_reprs.append(repr(chunk))
+        chunk_text = get_message_text(chunk)
+        if not chunk_text:
+            continue
+
+        chunk_count += 1
+        text_parts.append(chunk_text)
+        yield LLMTextStreamChunk(text=chunk_text)
+
+    response_text = "".join(text_parts)
+    result = _build_text_result_from_parts(
+        response_text=response_text,
+        response_metadata=_coerce_metadata(getattr(last_chunk, "response_metadata", None)) or {},
+        usage_metadata=_coerce_metadata(getattr(last_chunk, "usage_metadata", None)),
+        response_id=getattr(last_chunk, "id", None),
+        raw_response_repr="\n".join(raw_chunk_reprs) if raw_chunk_reprs else repr(response_text),
+        prompt=prompt,
+        agent_name=agent_name,
+        trace_metadata={
+            **(trace_metadata or {}),
+            "streaming": True,
+            "stream_chunk_count": chunk_count,
+        },
+    )
+    yield LLMTextStreamChunk(text="", result=result)
 
 
 def coerce_llm_text_result(response: Any) -> LLMTextResult:
@@ -378,6 +430,16 @@ async def _ainvoke_llm(llm: Any, prompt: str) -> Any:
     return await asyncio.to_thread(llm.invoke, prompt)
 
 
+async def _astream_llm(llm: Any, prompt: str) -> AsyncIterator[Any]:
+    astream = getattr(llm, "astream", None)
+    if callable(astream):
+        async for chunk in astream(prompt):
+            yield chunk
+        return
+
+    yield await _ainvoke_llm(llm, prompt)
+
+
 def _build_text_result_from_response(
     response: Any,
     *,
@@ -389,8 +451,29 @@ def _build_text_result_from_response(
     usage_metadata = _coerce_metadata(getattr(response, "usage_metadata", None))
     response_id = getattr(response, "id", None)
 
-    response_text = get_message_text(response)
-    raw_response_repr = repr(response)
+    return _build_text_result_from_parts(
+        response_text=get_message_text(response),
+        response_metadata=response_metadata or {},
+        usage_metadata=usage_metadata,
+        response_id=response_id,
+        raw_response_repr=repr(response),
+        prompt=prompt,
+        agent_name=agent_name,
+        trace_metadata=trace_metadata,
+    )
+
+
+def _build_text_result_from_parts(
+    *,
+    response_text: str,
+    response_metadata: dict[str, Any],
+    usage_metadata: dict[str, Any] | None,
+    response_id: Any,
+    raw_response_repr: str,
+    prompt: str,
+    agent_name: str | None,
+    trace_metadata: dict[str, Any] | None,
+) -> LLMTextResult:
     trace_dir = record_llm_call(
         prompt=prompt,
         response_text=response_text,
