@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
+
+from langgraph.config import get_stream_writer
 
 from cadpilotv3.agents.execution_validation_agent import ExecutionValidationAgent
 from cadpilotv3.config.settings import AppSettings
@@ -20,6 +24,7 @@ from cadpilotv3.services.parameter_service import ParameterService
 from cadpilotv3.services.repair_service import RepairService
 
 logger = logging.getLogger(__name__)
+CODEGEN_NODE_NAME = "code_generation_infill_agent"
 
 
 class PipelineNodes:
@@ -211,7 +216,8 @@ class PipelineNodes:
         ):
             critic_feedback = critic_b_report.patch_instructions
 
-        implemented_script = await self.code_generation_infill_service.aexecute_script(
+        writer = _get_optional_stream_writer()
+        async for code_event in self.code_generation_infill_service.astream_script(
             spec=state["spec"],
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
@@ -220,9 +226,19 @@ class PipelineNodes:
             current_script=state.get("script")
             if critic_feedback or state.get("repair_decision")
             else None,
-        )
+        ):
+            if writer is not None:
+                writer(
+                    {
+                        "node_name": CODEGEN_NODE_NAME,
+                        "event_type": code_event.event_type,
+                        "attempt_number": code_event.attempt_number,
+                        "payload": code_event.payload,
+                    }
+                )
 
-        state["script"] = implemented_script
+            if code_event.event_type == "code_generation_complete":
+                state["script"] = code_event.payload["script"]
 
         return state
 
@@ -389,3 +405,10 @@ class PipelineNodes:
         state["assembly_report_markdown"] = result.assembly_report_markdown
         state["user_facing_warnings"] = result.user_facing_warnings
         return state
+
+
+def _get_optional_stream_writer() -> Callable[[Any], None] | None:
+    try:
+        return get_stream_writer()
+    except RuntimeError:
+        return None
