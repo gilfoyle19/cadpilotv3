@@ -220,6 +220,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 system/
+!src/cadpilotv3/prompts/system/
+!src/cadpilotv3/prompts/system/*.md
 NOTES.md
 few_shot/
 .sandbox_runs/
