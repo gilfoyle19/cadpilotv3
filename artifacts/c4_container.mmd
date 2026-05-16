@@ -1,0 +1,49 @@
+flowchart TD
+    User[Designer / Engineer]
+
+    subgraph SYS[CadPilot v3]
+        CLI[CLI Entrypoints<br/>main.py<br/>scripts/stream_pipeline.py]
+
+        CFG[Configuration + Logging<br/>config/<br/>logging/]
+
+        GRAPH[Pipeline Orchestrator<br/>LangGraph<br/>graph/pipeline.py<br/>routing.py<br/>streaming.py]
+
+        APP[Application Services<br/>services/]
+
+        AGENTS[LLM Agent Adapters<br/>agents/]
+
+        CONTRACTS[Prompt + Contract Assets<br/>prompts/<br/>schemas/]
+
+        LLMRT[LLM Runtime<br/>llm/factory.py<br/>llm/profiles.py]
+
+        SANDBOX[CadQuery Execution Sandbox<br/>generated script execution<br/>geometry inspection]
+
+        EXPORT[Geometry Exporter<br/>STEP / STL / DXF / IGES]
+
+        TRACE[(Local Trace Store<br/>artifacts/llm_runs/)]
+        RUNS[(Sandbox Runs<br/>.sandbox_runs/)]
+        OUT[(Export Output<br/>output/)]
+    end
+
+    LLM[External LLM Providers]
+    WEB[OpenAI Web Search]
+    SMITH[LangSmith]
+
+    User --> CLI
+    CLI --> CFG
+    CLI --> GRAPH
+
+    GRAPH --> APP
+    APP --> AGENTS
+    AGENTS --> CONTRACTS
+    AGENTS --> LLMRT
+    LLMRT --> LLM
+
+    AGENTS --> WEB
+    APP --> SANDBOX
+    APP --> EXPORT
+
+    CLI --> SMITH
+    AGENTS --> TRACE
+    SANDBOX --> RUNS
+    EXPORT --> OUT

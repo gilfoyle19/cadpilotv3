@@ -219,6 +219,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Node / frontend tooling
+node_modules/
+.npm-cache/
+
 system/
 NOTES.md
 few_shot/
