@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 
 import pytest
+from langgraph.graph import StateGraph
 
+from cadpilotv3.graph.nodes import PipelineNodes
+from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.graph.streaming import (
     PipelineStreamEvent,
     astream_pipeline_events,
@@ -28,6 +31,81 @@ class FailingStreamingPipeline:
         yield {}
 
 
+class FakeGraphStreamingPipeline:
+    async def astream(self, initial_state: dict, *, stream_mode: list[str]):
+        assert stream_mode == ["tasks", "updates", "custom"]
+        state = dict(initial_state)
+        yield (
+            "tasks",
+            {
+                "name": "intent_spec_agent",
+                "input": dict(state),
+            },
+        )
+        state["spec"] = SimpleNamespace(component="bracket")
+        yield ("updates", {"intent_spec_agent": dict(state)})
+
+        yield (
+            "tasks",
+            {
+                "name": "code_generation_infill_agent",
+                "input": dict(state),
+            },
+        )
+        yield (
+            "custom",
+            {
+                "node_name": "code_generation_infill_agent",
+                "event_type": "code_generation_start",
+                "attempt_number": 1,
+                "payload": {},
+            },
+        )
+        yield (
+            "custom",
+            {
+                "node_name": "code_generation_infill_agent",
+                "event_type": "code_chunk",
+                "attempt_number": 1,
+                "payload": {"text": "import cadquery as cq\n"},
+            },
+        )
+        yield (
+            "custom",
+            {
+                "node_name": "code_generation_infill_agent",
+                "event_type": "code_chunk",
+                "attempt_number": 1,
+                "payload": {"text": "def build_part():\n    return None\n"},
+            },
+        )
+        state["script"] = "import cadquery as cq\ndef build_part():\n    return None\n"
+        yield (
+            "custom",
+            {
+                "node_name": "code_generation_infill_agent",
+                "event_type": "code_generation_complete",
+                "attempt_number": 1,
+                "payload": {
+                    "script": state["script"],
+                    "script_length_chars": len(state["script"]),
+                },
+            },
+        )
+        yield ("updates", {"code_generation_infill_agent": dict(state)})
+
+        yield (
+            "tasks",
+            {
+                "name": "export_summary_agent",
+                "input": dict(state),
+            },
+        )
+        state["export_files"] = ["part.step"]
+        state["assembly_report_markdown"] = "done"
+        yield ("updates", {"export_summary_agent": dict(state)})
+
+
 class FakeCodeGenerationService:
     async def astream_script(self, **kwargs):
         yield CodeGenerationStreamEvent(
@@ -40,69 +118,13 @@ class FakeCodeGenerationService:
             payload={"text": "import cadquery as cq\n"},
         )
         yield CodeGenerationStreamEvent(
-            event_type="code_chunk",
-            attempt_number=1,
-            payload={"text": "def build_part():\n    return None\n"},
-        )
-        yield CodeGenerationStreamEvent(
             event_type="code_generation_complete",
             attempt_number=1,
             payload={
-                "script": "import cadquery as cq\ndef build_part():\n    return None\n",
-                "script_length_chars": 54,
+                "script": "import cadquery as cq\n",
+                "script_length_chars": 22,
             },
         )
-
-
-class FakePipelineNodes:
-    def __init__(self, settings) -> None:
-        self.code_generation_infill_service = FakeCodeGenerationService()
-
-    async def aintent_spec_agent(self, state):
-        state["spec"] = SimpleNamespace(component="bracket")
-        return state
-
-    async def ageometry_planner_agent(self, state):
-        state["geometry_plan"] = SimpleNamespace(parts=[])
-        return state
-
-    async def acritic_checkpoint_a(self, state):
-        state["critic_a_report"] = SimpleNamespace(
-            verdict="pass",
-            routing="proceed",
-        )
-        return state
-
-    async def aparameter_agent(self, state):
-        state["parameters"] = SimpleNamespace(parameters={})
-        return state
-
-    async def aexecution_validation_node(self, state):
-        state["validation"] = SimpleNamespace(
-            status="success",
-            repair_needed=False,
-        )
-        state["final_geometry"] = {
-            "workspace_dir": ".sandbox_runs/fake",
-            "result_object_name": "model",
-        }
-        return state
-
-    async def arepair_agent(self, state):
-        return state
-
-    async def acritic_checkpoint_b(self, state):
-        state["critic_b_report"] = SimpleNamespace(
-            routing="export",
-            user_facing_warnings=[],
-        )
-        return state
-
-    async def aexport_summary_agent(self, state):
-        state["export_files"] = ["part.step"]
-        state["assembly_report_markdown"] = "done"
-        state["user_facing_warnings"] = []
-        return state
 
 
 async def test_astream_pipeline_events_yields_progress_and_completion() -> None:
@@ -177,8 +199,8 @@ async def test_astream_pipeline_events_yields_progress_and_completion() -> None:
 
 async def test_astream_pipeline_with_code_events_yields_code_chunks(monkeypatch) -> None:
     monkeypatch.setattr(
-        "cadpilotv3.graph.streaming.PipelineNodes",
-        FakePipelineNodes,
+        "cadpilotv3.graph.streaming.build_async_pipeline",
+        lambda _settings: FakeGraphStreamingPipeline(),
     )
 
     events = [
@@ -225,6 +247,45 @@ async def test_astream_pipeline_with_code_events_yields_code_chunks(monkeypatch)
     assert events[-1].payload["summary"]["export_count"] == 1
     assert events[-1].payload["result"]["export_files"] == ["part.step"]
     assert events[-1].payload["result"]["assembly_report_markdown"] == "done"
+
+
+async def test_codegen_node_streams_custom_events_inside_graph() -> None:
+    nodes = object.__new__(PipelineNodes)
+    nodes.code_generation_infill_service = FakeCodeGenerationService()
+
+    graph = StateGraph(PipelineState)
+    graph.add_node("code_generation_infill_agent", nodes.acode_generation_infill_agent)
+    graph.set_entry_point("code_generation_infill_agent")
+    pipeline = graph.compile()
+
+    stream_parts = [
+        part
+        async for part in pipeline.astream(
+            {
+                "spec": object(),
+                "geometry_plan": object(),
+                "parameters": object(),
+                "script": "",
+                "repair_decision": None,
+                "critic_b_report": {},
+            },
+            stream_mode=["custom", "updates"],
+        )
+    ]
+
+    custom_parts = [payload for mode, payload in stream_parts if mode == "custom"]
+    assert [part["event_type"] for part in custom_parts] == [
+        "code_generation_start",
+        "code_chunk",
+        "code_generation_complete",
+    ]
+    assert custom_parts[1]["payload"]["text"] == "import cadquery as cq\n"
+
+    update_payload = next(payload for mode, payload in stream_parts if mode == "updates")
+    assert (
+        update_payload["code_generation_infill_agent"]["script"]
+        == "import cadquery as cq\n"
+    )
 
 
 def test_pipeline_stream_event_to_dict_coerces_payload() -> None:

@@ -1,0 +1,16 @@
+flowchart LR
+    User[Designer / Engineer]
+
+    CadPilot[CadPilot v3<br/>Natural-language to validated CAD pipeline]
+
+    LLM[LLM Providers<br/>OpenAI / OpenRouter / Anthropic]
+    Web[OpenAI Web Search<br/>optional interface-dimension research]
+    LangSmith[LangSmith<br/>observability / tracing]
+    Files[Generated CAD Artifacts<br/>STEP / STL / DXF / reports]
+
+    User -->|CAD request| CadPilot
+    CadPilot -->|prompts + structured tasks| LLM
+    CadPilot -->|dimension research when needed| Web
+    CadPilot -->|run traces| LangSmith
+    CadPilot -->|exports + summaries| Files
+    Files -->|download / inspect| User

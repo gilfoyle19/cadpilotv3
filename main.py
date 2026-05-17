@@ -18,19 +18,8 @@ from cadpilotv3.shared import clear_llm_trace, configure_llm_trace
 logger = logging.getLogger(__name__)
 
 DEFAULT_USER_PROMPT = (
-    "Create a static two-part FDM-printable wall-mounted sensor enclosure assembly "
-    "in CadQuery using millimeters and exporting STEP. The assembly should include "
-    "a separate rear mounting plate and a removable front cover, with no hinges or "
-    "moving joints. The rear plate should be about 90 x 55 x 6 mm, with four M4 "
-    "countersunk wall-mounting holes near the corners and two raised internal "
-    "standoffs for holding a small PCB. The front cover should be a shallow "
-    "rectangular shell about 90 x 55 x 22 mm that sits over the rear plate, with "
-    "2 mm walls, a small rectangular cable exit notch on the bottom edge, and four "
-    "M3 clearance holes aligned to matching screw bosses on the rear plate. Keep "
-    "the cover and rear plate as separate parts in the closed assembled position, "
-    "include a small perimeter lip or step for alignment, and make the design "
-    "suitable for FDM printing with flat print faces and no unsupported floating "
-    "geometry."
+    "Create a single-part FDM-printable cable clamp block in CadQuery using millimeters and exporting STEP. The part should be a rectangular block about 50 mm long, 24 mm wide, and 12 mm tall, with a centered semicircular cable channel running along its length for a 10 mm diameter cable. Add two M4 clearance through-holes, one near each end, so the block can be screwed down to a surface. Keep it as one solid printable part with no lid, no assembly, and no moving features."
+
 )
 
 

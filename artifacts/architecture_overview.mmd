@@ -1,0 +1,127 @@
+flowchart TD
+    U[User prompt] --> E1[main.py<br/>sync or streaming CLI]
+    U --> E2[scripts/stream_pipeline.py<br/>streaming CLI]
+
+    E1 --> BOOT[Bootstrap<br/>settings + logging + LangSmith + LLM trace]
+    E2 --> BOOT
+    BOOT --> G[LangGraph pipeline<br/>build_pipeline / build_async_pipeline]
+    G <--> ST[PipelineState<br/>spec, plan, params, script,<br/>validation, repair, exports]
+
+    subgraph FLOW[Core CAD generation flow]
+        I[intent_spec_agent]
+        GP[geometry_planner_agent]
+        CA[critic_checkpoint_a]
+        P[parameter_agent]
+        CG[code_generation_infill_agent]
+        EV[execution_validation_node]
+        R[repair_agent]
+        CB[critic_checkpoint_b]
+        X[export_summary_agent]
+
+        I --> GP --> CA
+        CA -->|proceed| P
+        CA -->|replan| GP
+        P --> CG --> EV
+        EV -->|valid| CB
+        EV -->|repair needed| R
+        R -->|patch| EV
+        R -->|regenerate| CG
+        R -->|replan| GP
+        R -->|give up / max attempts| CB
+        CB -->|export| X
+        CB -->|patch| CG
+        CB -->|replan| GP
+    end
+
+    G --> I
+
+    subgraph SERVICES[Service layer]
+        IS[IntentSpecService]
+        GPS[GeometryPlannerService]
+        CAS[CriticCheckpointAService]
+        PS[ParameterService]
+        CGS[CodeGenerationInfillService]
+        SBS[CadQueryExecutionSandboxService]
+        RPS[RepairService]
+        CBS[CriticCheckpointBService]
+        ESS[ExportSummaryService]
+        GES[GeometryExportService]
+    end
+
+    I --> IS
+    GP --> GPS
+    CA --> CAS
+    P --> PS
+    CG --> CGS
+    EV --> SBS
+    EV --> EVA[ExecutionValidationAgent]
+    R --> RPS
+    CB --> CBS
+    X --> ESS --> GES
+
+    subgraph AGENTS[Agent layer]
+        IA[IntentSpecAgent]
+        GPA[GeometryPlannerAgent]
+        CAA[CriticCheckpointAAgent]
+        PA[ParameterAgent]
+        CGA[CodeGenerationInfillAgent]
+        RA[RepairAgent]
+        CBA[CriticCheckpointBAgent]
+        ESA[ExportSummaryAgent]
+    end
+
+    IS --> IA
+    GPS --> GPA
+    CAS --> CAA
+    PS --> PA
+    CGS --> CGA
+    RPS --> RA
+    CBS --> CBA
+    ESS --> ESA
+
+    subgraph INTEL[Shared intelligence + contracts]
+        PROMPTS[prompts/<br/>system + examples + cheatsheet]
+        SCHEMAS[schemas/<br/>Pydantic contracts]
+        LLM[llm/<br/>LLMFactory + profiles]
+        LLMUTILS[shared/<br/>JSON parsing, retry,<br/>prompt utils, LLM tracing]
+        WEB[WebResearchService<br/>optional intent enrichment]
+    end
+
+    IA --> WEB
+    IA --> PROMPTS
+    GPA --> PROMPTS
+    CAA --> PROMPTS
+    PA --> PROMPTS
+    CGA --> PROMPTS
+    RA --> PROMPTS
+    CBA --> PROMPTS
+    ESA --> PROMPTS
+
+    IA --> LLM
+    GPA --> LLM
+    CAA --> LLM
+    PA --> LLM
+    CGA --> LLM
+    RA --> LLM
+    CBA --> LLM
+    ESA --> LLM
+
+    IA --> SCHEMAS
+    GPA --> SCHEMAS
+    CAA --> SCHEMAS
+    PA --> SCHEMAS
+    RA --> SCHEMAS
+    CBA --> SCHEMAS
+    ESA --> SCHEMAS
+    EVA --> SCHEMAS
+
+    LLM --> LLMUTILS
+
+    SBS --> SANDBOX[.sandbox_runs/<br/>generated_script.py<br/>execution_artifacts.json]
+    CGS --> TRACE[artifacts/llm_runs/<br/>prompts, responses, parsed outputs]
+    ESS --> OUT[output/<br/>STEP/STL/DXF/IGES]
+    X --> OUT
+
+    G --> STREAM[graph/streaming.py<br/>pipeline + node + code events]
+    STREAM --> E1
+    STREAM --> E2

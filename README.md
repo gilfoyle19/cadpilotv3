@@ -211,6 +211,17 @@ LLM traces, when enabled, are written under:
 artifacts/llm_runs/
 ```
 
+### Run The Streamlit Demo UI
+
+```powershell
+uv run streamlit run streamlit_app.py
+```
+
+The demo opens a side-by-side interface with chat on the left and the latest
+generated STEP model on the right. The STEP viewer uses a browser-side CAD
+renderer, so the browser needs network access the first time it loads the STEP
+import worker.
+
 ## Outputs
 
 Generated CAD artifacts, graph images, and related pipeline outputs are written

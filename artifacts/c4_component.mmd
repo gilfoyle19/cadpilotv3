@@ -1,0 +1,82 @@
+flowchart TD
+    ENTRY[CLI / Streaming Entrypoints]
+
+    subgraph ORCH[graph/]
+        PIPE[Pipeline Builder<br/>sync + async graph]
+        STATE[PipelineState]
+        ROUTE[Routing Rules]
+        STREAM[Streaming Event Adapter]
+    end
+
+    subgraph FLOW[Pipeline Components]
+        INTENT[Intent Spec]
+        PLAN[Geometry Planner]
+        CRITA[Critic Checkpoint A]
+        PARAM[Parameter Selection]
+        CODE[Code Generation]
+        VALID[Execution Validation]
+        REPAIR[Repair]
+        CRITB[Critic Checkpoint B]
+        SUMMARY[Export Summary]
+    end
+
+    subgraph SUPPORT[Supporting Components]
+        WEBR[WebResearchService]
+        SANDBOX[CadQueryExecutionSandboxService]
+        EXPORT[GeometryExportService]
+        PROMPTS[Prompt Loader + Prompt Files]
+        SCHEMA[Pydantic Schemas]
+        LLM[LLMFactory + Profiles]
+        TRACE[LLM Trace Utilities]
+    end
+
+    ENTRY --> PIPE
+    PIPE --> STATE
+    PIPE --> ROUTE
+    PIPE --> STREAM
+
+    PIPE --> INTENT --> PLAN --> CRITA
+    CRITA -->|pass| PARAM
+    CRITA -->|replan| PLAN
+    PARAM --> CODE --> VALID
+    VALID -->|success| CRITB
+    VALID -->|repair needed| REPAIR
+    REPAIR -->|patch| VALID
+    REPAIR -->|regenerate| CODE
+    REPAIR -->|replan| PLAN
+    CRITB -->|export| SUMMARY
+    CRITB -->|patch| CODE
+    CRITB -->|replan| PLAN
+
+    INTENT --> WEBR
+    VALID --> SANDBOX
+    SUMMARY --> EXPORT
+
+    INTENT --> PROMPTS
+    PLAN --> PROMPTS
+    CRITA --> PROMPTS
+    PARAM --> PROMPTS
+    CODE --> PROMPTS
+    REPAIR --> PROMPTS
+    CRITB --> PROMPTS
+    SUMMARY --> PROMPTS
+
+    INTENT --> LLM
+    PLAN --> LLM
+    CRITA --> LLM
+    PARAM --> LLM
+    CODE --> LLM
+    REPAIR --> LLM
+    CRITB --> LLM
+    SUMMARY --> LLM
+
+    INTENT --> SCHEMA
+    PLAN --> SCHEMA
+    CRITA --> SCHEMA
+    PARAM --> SCHEMA
+    VALID --> SCHEMA
+    REPAIR --> SCHEMA
+    CRITB --> SCHEMA
+    SUMMARY --> SCHEMA
+
+    LLM --> TRACE
