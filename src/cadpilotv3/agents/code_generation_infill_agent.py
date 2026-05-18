@@ -250,8 +250,11 @@ class CodeGenerationInfillAgent:
                 ),
                 (
                     "validate_geometry may check bounding boxes, part counts, "
-                    "and positive final volume, but must not include heuristic "
-                    "volume_reasonable or expected-volume threshold checks."
+                    "and positive final volume. Do not use heuristic global "
+                    "volume_reasonable or expected-volume threshold checks, but "
+                    "for required subtractive features you may and should use "
+                    "operation-local before/after checks that prove each cut "
+                    "actually changed the returned solid."
                 ),
                 (
                     "Avoid Workplane.hole(); use explicit cutter solids. Use only "
