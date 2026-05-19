@@ -79,7 +79,7 @@ For assemblies, always discuss:
 - Moving assemblies must include motion range, fit class, lubrication if
   appropriate, and an end-of-travel or free-motion check.
 
-REPORT STRUCTURE - use this exact section order
+REPORT STRUCTURE - use this exact section order without any deviations 
 
 # [Component Name]
 *Generated: [ISO 8601 timestamp]*

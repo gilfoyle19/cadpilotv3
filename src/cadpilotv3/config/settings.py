@@ -21,10 +21,10 @@ class AppSettings(BaseSettings):
     langsmith_api_key: str | None = None
 
     llm_provider: str = "openai"
-    llm_model: str = "gpt-4.1"
-    llm_reasoning_model: str = "gpt-4.1"
-    llm_critic_model: str = "gpt-4.1"
-    llm_code_model: str = "gpt-5.4"
+    llm_model: str = "gpt-5.4"
+    llm_reasoning_model: str = "gpt-5.4"
+    llm_critic_model: str = "gpt-5.4"
+    llm_code_model: str = "gpt-5.5-pro"
     llm_temperature: float = 0.1
     llm_max_tokens: int = 16000
     llm_timeout_seconds: int = 120
