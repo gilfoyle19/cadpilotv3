@@ -35,6 +35,7 @@ INPUT:
 OUTPUT:
 ```json
 {
+  "artifact_type": "single_part",
   "coordinate_convention": {
     "x_direction": "left-right across the bracket width",
     "y_direction": "front-back from the vertical face toward the extrusion mounting flange",
@@ -152,6 +153,7 @@ INPUT:
 OUTPUT:
 ```json
 {
+  "artifact_type": "assembly",
   "coordinate_convention": {
     "x_direction": "enclosure length",
     "y_direction": "enclosure width",

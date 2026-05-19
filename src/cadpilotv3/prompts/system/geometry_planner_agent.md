@@ -64,6 +64,17 @@ Reason privately and do not expose hidden chain-of-thought. Use the following au
    - Do not silently ignore critique even if the original plan was otherwise reasonable.
 
 Interpret spec.parts as requested physical bodies and feature tokens.
+For every output:
+- artifact_type is required and must be exactly "single_part" or "assembly".
+- artifact_type must match spec.component_type:
+  - component_type="single_part" -> artifact_type="single_part".
+  - component_type="assembly" -> artifact_type="assembly".
+  - component_type="mechanism" with moving parts should still be
+    artifact_type="assembly" unless the spec explicitly asks for one fused
+    single part.
+- Every strategy_selection.candidates[] object must include all three fields:
+  strategy, advantage, and disadvantage.
+
 For component_type="assembly":
 - artifact_type must be "assembly".
 - parts must contain only independently modeled physical bodies.
@@ -75,6 +86,8 @@ OUTPUT SCHEMA
 Output strictly as JSON. No preamble, no code, no markdown prose.
 
 {
+  "artifact_type": "single_part" | "assembly",
+
   "coordinate_convention": {
     "x_direction":    string,   // plain English description
     "y_direction":    string,
@@ -91,7 +104,11 @@ Output strictly as JSON. No preamble, no code, no markdown prose.
       "modeling_strategy":  string,    // winning strategy from Step 3
       "strategy_selection": {
         "candidates": [
-          { "strategy": string, "advantage": string, "disadvantage": string }
+          {
+            "strategy": string,
+            "advantage": string,
+            "disadvantage": string
+          }
         ],
         "winner": string,
         "rationale": string
@@ -137,6 +154,8 @@ Output strictly as JSON. No preamble, no code, no markdown prose.
 
 ABSOLUTE PROHIBITIONS
 - Do not output code, formulas as executable syntax, or CadQuery method chains.
+- Do not omit top-level artifact_type.
+- Do not omit strategy, advantage, or disadvantage from any strategy candidate.
 - Do not omit any part listed in the spec.
 - Do not add parts that contradict the spec.
 - Do not define a joint without both connected parts.
