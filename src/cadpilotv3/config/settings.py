@@ -27,6 +27,11 @@ class AppSettings(BaseSettings):
     llm_code_model: str = "gpt-5.5-pro"
     llm_temperature: float = 0.1
     llm_max_tokens: int = 16000
+    llm_structured_max_tokens: int = 5000
+    llm_planner_max_tokens: int = 8000
+    llm_critic_max_tokens: int = 6000
+    llm_summary_max_tokens: int = 4000
+    llm_code_max_tokens: int | None = None
     llm_timeout_seconds: int = 120
     llm_streaming: bool = True
     llm_trace_outputs: bool = True
@@ -85,7 +90,7 @@ class AppSettings(BaseSettings):
                 "provider": self.llm_provider,
                 "model": self.llm_model,
                 "temperature": 0.0,
-                "max_tokens": self.llm_max_tokens,
+                "max_tokens": self.llm_structured_max_tokens,
                 "timeout_seconds": self.llm_timeout_seconds,
                 "streaming": self.llm_streaming,
             },
@@ -93,7 +98,7 @@ class AppSettings(BaseSettings):
                 "provider": self.llm_provider,
                 "model": self.llm_reasoning_model,
                 "temperature": self.llm_temperature,
-                "max_tokens": self.llm_max_tokens,
+                "max_tokens": self.llm_planner_max_tokens,
                 "timeout_seconds": self.llm_timeout_seconds,
                 "streaming": self.llm_streaming,
             },
@@ -101,7 +106,7 @@ class AppSettings(BaseSettings):
                 "provider": self.llm_provider,
                 "model": self.llm_code_model,
                 "temperature": 0.0,
-                "max_tokens": self.llm_max_tokens,
+                "max_tokens": self.llm_code_max_tokens or self.llm_max_tokens,
                 "timeout_seconds": self.llm_timeout_seconds,
                 "streaming": self.llm_streaming,
             },
@@ -109,7 +114,7 @@ class AppSettings(BaseSettings):
                 "provider": self.llm_provider,
                 "model": self.llm_critic_model,
                 "temperature": 0.0,
-                "max_tokens": self.llm_max_tokens,
+                "max_tokens": self.llm_critic_max_tokens,
                 "timeout_seconds": self.llm_timeout_seconds,
                 "streaming": self.llm_streaming,
             },
@@ -117,7 +122,7 @@ class AppSettings(BaseSettings):
                 "provider": self.llm_provider,
                 "model": self.llm_model,
                 "temperature": 0.0,
-                "max_tokens": self.llm_max_tokens,
+                "max_tokens": self.llm_summary_max_tokens,
                 "timeout_seconds": self.llm_timeout_seconds,
                 "streaming": self.llm_streaming,
             },
