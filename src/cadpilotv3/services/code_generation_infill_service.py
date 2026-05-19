@@ -40,6 +40,46 @@ PUBLIC_ENTRYPOINT_RESULT_NAMES = {
 }
 RESULT_OBJECT_NAMES = frozenset({"model", "assembly", "result", "final_geometry"})
 REQUIRED_SUPPORT_FUNCTIONS = frozenset({"validate_geometry", "export_all"})
+DISALLOWED_VALIDATE_GEOMETRY_CALLS = frozenset(
+    {
+        "build_part",
+        "build_assembly",
+        "export_all",
+    }
+)
+DISALLOWED_VALIDATE_GEOMETRY_METHODS = frozenset(
+    {
+        "cut",
+        "union",
+        "intersect",
+        "fillet",
+        "chamfer",
+        "shell",
+        "extrude",
+        "loft",
+        "save",
+        "export",
+    }
+)
+DISALLOWED_VALIDATION_HEURISTIC_KEYS = frozenset(
+    {
+        "bbox_matches",
+        "bounding_box_matches",
+        "dimensions_match",
+        "exact_dimensions",
+        "expected_bbox",
+        "expected_bounding_box",
+        "expected_final_volume",
+        "expected_final_volume_upper_bound",
+        "expected_part_volume",
+        "expected_plate_volume",
+        "expected_volume",
+        "volume_ratio",
+        "volume_reasonable",
+        "volume_reduced_by_holes",
+        "volume_threshold",
+    }
+)
 
 
 CodeGenerationStreamEventType = Literal[
@@ -504,6 +544,11 @@ class CodeGenerationInfillService:
             missing = ", ".join(sorted(f"{name}()" for name in missing_support_functions))
             raise CodeGenerationOutputError(f"Generated script must define {missing}")
 
+        validate_geometry_function = self._find_function_def(tree, "validate_geometry")
+        if validate_geometry_function is None:
+            raise CodeGenerationOutputError("Generated script must define validate_geometry()")
+        self._validate_generated_validation_function(validate_geometry_function)
+
         if any(isinstance(node, ast.Global) for node in ast.walk(tree)):
             raise CodeGenerationOutputError(
                 "Generated script must not use global statements; use constants directly"
@@ -516,10 +561,11 @@ class CodeGenerationInfillService:
                 "use explicit cutter solids and .cut()"
             )
 
-        if any(self._is_disallowed_volume_reasonable_key(node) for node in ast.walk(tree)):
+        if any(self._is_disallowed_validation_heuristic_key(node) for node in ast.walk(tree)):
             raise CodeGenerationOutputError(
-                "Generated script must not include heuristic volume_reasonable checks; "
-                "use positive-volume and bounding-box checks only"
+                "Generated script must not include brittle validation heuristic keys "
+                "such as volume_reasonable, expected_volume, or expected_bounding_box; "
+                "use positive-volume, part-count, and positive bounding-box checks only"
             )
 
         main_guards = [node for node in tree.body if self._is_main_guard(node)]
@@ -559,6 +605,45 @@ class CodeGenerationInfillService:
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.target.id in RESULT_OBJECT_NAMES
+        )
+
+    def _find_function_def(self, tree: ast.Module, function_name: str) -> ast.FunctionDef | None:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                return node
+        return None
+
+    def _validate_generated_validation_function(
+        self,
+        validate_geometry_function: ast.FunctionDef,
+    ) -> None:
+        for node in ast.walk(validate_geometry_function):
+            if isinstance(node, ast.Assert):
+                raise CodeGenerationOutputError(
+                    "Generated validate_geometry() must not use assert statements; "
+                    "return robust boolean checks in a dict"
+                )
+            if isinstance(node, ast.Raise):
+                raise CodeGenerationOutputError(
+                    "Generated validate_geometry() must not raise exceptions; "
+                    "return robust boolean checks in a dict"
+                )
+            if self._is_disallowed_validate_geometry_call(node):
+                raise CodeGenerationOutputError(
+                    "Generated validate_geometry() must be side-effect-free; "
+                    "do not rebuild, export, save, or modify geometry there"
+                )
+
+    def _is_disallowed_validate_geometry_call(self, node: ast.AST) -> bool:
+        if not isinstance(node, ast.Call):
+            return False
+
+        func = node.func
+        if isinstance(func, ast.Name):
+            return func.id in DISALLOWED_VALIDATE_GEOMETRY_CALLS
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr in DISALLOWED_VALIDATE_GEOMETRY_METHODS
         )
 
     def _validate_main_guard_skeleton(
@@ -656,19 +741,14 @@ class CodeGenerationInfillService:
         comparator = test.comparators[0]
         return isinstance(comparator, ast.Constant) and comparator.value == "__main__"
 
-    def _is_disallowed_volume_reasonable_key(self, node: ast.AST) -> bool:
-        disallowed_names = {
-            "volume_reasonable",
-            "volume_reduced_by_holes",
-            "expected_volume",
-            "expected_plate_volume",
-            "expected_final_volume_upper_bound",
-        }
-
+    def _is_disallowed_validation_heuristic_key(self, node: ast.AST) -> bool:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value in disallowed_names
+            return node.value in DISALLOWED_VALIDATION_HEURISTIC_KEYS
 
-        return isinstance(node, ast.Name) and node.id in disallowed_names
+        return (
+            isinstance(node, ast.Name)
+            and node.id in DISALLOWED_VALIDATION_HEURISTIC_KEYS
+        )
 
     def _extract_generated_code(self, generated_text: str) -> str:
         text = generated_text.strip()

@@ -217,12 +217,23 @@ IMPLEMENTATION RULES
 
 VALIDATION AND EXPORT RULES
 - validate_geometry should perform cheap, robust checks that work in the
-  execution sandbox. Prefer bounding boxes, assembly child counts, manifold or
-  positive-volume checks, and obvious positive-dimension assertions.
-- Do not include heuristic volume comparison checks such as volume_reasonable,
-  volume_reduced_by_holes, or expected-volume thresholds. Boolean cuts,
-  chamfers, fillets, and curved geometry make these estimates brittle. Only
-  check that final volume is positive/non-zero when useful.
+  execution sandbox and return a dict of booleans/numbers.
+- validate_geometry must be side-effect-free: do not rebuild the model, do not
+  export/save files, and do not modify geometry with cut, union, intersect,
+  fillet, chamfer, shell, extrude, or loft.
+- validate_geometry must not use assert statements or raise exceptions. A failed
+  check should appear as `False` in the returned dict, not as a thrown error.
+- Prefer robust checks: positive volume, positive bounding-box dimensions,
+  assembly child/part counts, manifold/validity flags when cheaply available,
+  and simple positive-dimension checks.
+- Do not include brittle heuristic checks or keys such as volume_reasonable,
+  volume_reduced_by_holes, expected_volume, expected_bounding_box,
+  bbox_matches, dimensions_match, volume_ratio, or expected-volume thresholds.
+  Boolean cuts, chamfers, fillets, and curved geometry make these estimates
+  brittle. Only check that final volume is positive/non-zero when useful.
+- If you need to prove a required cut happened, use operation-local before/after
+  checks near the cut operation in the build flow, not a global
+  expected-volume comparison in validate_geometry.
 - export_all should create output_dir if needed, export the requested formats,
   and return the generated file paths.
 - For an assembly STEP export, use the assembly save/export path supported by

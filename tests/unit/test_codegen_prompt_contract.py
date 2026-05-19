@@ -74,3 +74,19 @@ def test_codegen_prompt_defines_strict_script_skeleton() -> None:
     assert "validate_geometry(assembly)" in system_prompt
     assert "export_all(assembly, \"./output\")" in system_prompt
     assert "do not call exporters.export" in system_prompt
+
+
+def test_codegen_prompt_makes_generated_validation_robust() -> None:
+    system_prompt = (
+        PROMPT_ROOT / "system" / "code_generation_infill.md"
+    ).read_text(encoding="utf-8")
+
+    assert "validate_geometry must be side-effect-free" in system_prompt
+    assert "must not use assert statements or raise exceptions" in system_prompt
+    assert "positive volume" in system_prompt
+    assert "positive bounding-box dimensions" in system_prompt
+    assert "expected_bounding_box" in system_prompt
+    assert "dimensions_match" in system_prompt
+    assert "volume_ratio" in system_prompt
+    assert "operation-local before/after" in system_prompt
+    assert "checks near the cut operation" in system_prompt

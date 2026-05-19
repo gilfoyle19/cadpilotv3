@@ -291,6 +291,72 @@ def test_codegen_preflight_rejects_volume_reasonable_heuristic() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "validation_body",
+    [
+        "    assert model.val().Volume() > 0\n    return {}",
+        "    raise ValueError('invalid geometry')",
+    ],
+)
+def test_codegen_preflight_rejects_throwing_validate_geometry(
+    validation_body: str,
+) -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "def validate_geometry(model):\n    return {}",
+        f"def validate_geometry(model):\n{validation_body}",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="validate_geometry"):
+        service._validate_generated_code(script)
+
+
+@pytest.mark.parametrize(
+    "validation_body",
+    [
+        "    return {'saved': model.save('bad.step')}",
+        "    return {'exported': export_all(model, '.')}",
+        "    return {'rebuilt': build_part().val().Volume() > 0}",
+        "    return {'modified': model.cut(cq.Workplane('XY').box(1, 1, 1))}",
+    ],
+)
+def test_codegen_preflight_rejects_side_effects_inside_validate_geometry(
+    validation_body: str,
+) -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "def validate_geometry(model):\n    return {}",
+        f"def validate_geometry(model):\n{validation_body}",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="side-effect-free"):
+        service._validate_generated_code(script)
+
+
+@pytest.mark.parametrize(
+    "heuristic_key",
+    [
+        "bbox_matches",
+        "dimensions_match",
+        "expected_bounding_box",
+        "expected_final_volume",
+        "volume_ratio",
+        "volume_threshold",
+    ],
+)
+def test_codegen_preflight_rejects_brittle_validation_heuristic_keys(
+    heuristic_key: str,
+) -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "def validate_geometry(model):\n    return {}",
+        f"def validate_geometry(model):\n    return {{{heuristic_key!r}: True}}",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="brittle validation"):
+        service._validate_generated_code(script)
+
+
 def test_apply_patch_raises_when_target_missing() -> None:
     service = object.__new__(CodeGenerationInfillService)
 

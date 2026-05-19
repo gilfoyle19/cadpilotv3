@@ -255,11 +255,13 @@ class CodeGenerationInfillAgent:
                 ),
                 (
                     "validate_geometry may check bounding boxes, part counts, "
-                    "and positive final volume. Do not use heuristic global "
-                    "volume_reasonable or expected-volume threshold checks, but "
-                    "for required subtractive features you may and should use "
-                    "operation-local before/after checks that prove each cut "
-                    "actually changed the returned solid."
+                    "and positive final volume. It must return a dict, must not "
+                    "raise/assert, and must not rebuild, export, save, or modify "
+                    "geometry. Do not use heuristic global volume_reasonable, "
+                    "expected_bounding_box, dimensions_match, volume_ratio, or "
+                    "expected-volume threshold checks. For required subtractive "
+                    "features, use operation-local before/after checks near the "
+                    "cut instead of global expected-volume math."
                 ),
                 (
                     "Avoid Workplane.hole(), Workplane.cboreHole(), and "
