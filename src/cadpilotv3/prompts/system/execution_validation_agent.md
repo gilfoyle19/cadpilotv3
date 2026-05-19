@@ -85,10 +85,17 @@ For silent failures:
 - error_message: observed symptom.
 
 ERROR CLASSIFICATION GUIDANCE
+- Use the traceback, exception type, exception message, and failing code line together; do not rely on only the Python exception class.
 - AttributeError for a missing CadQuery method is "api_misuse".
+- multimethod.DispatchError or "no method found" from a non-export CadQuery call is "api_misuse".
+- exporter/exporters/export STEP/STL/path/extension failures are "export_format_error", even when the exception type is TypeError or DispatchError.
 - TypeError from wrong call signature is "type_error".
-- StdFail_NotDone, BRep, boolean, or topological construction failures are usually "topology_error" unless clearly caused by oversized fillet.
-- Empty selectors that cause later failure are "empty_selection".
+- ModuleNotFoundError and ImportError are always "import_error".
+- StdFail_NotDone, BRep, TopoDS, BOPAlgo, boolean, cut, or fuse construction failures are usually "topology_error" unless clearly caused by an oversized fillet or chamfer.
+- Oversized fillet/chamfer failures with radius, BRepFillet, or StdFail_NotDone text are "fillet_radius_overflow" before generic topology classification.
+- Empty selectors, no matching faces/edges, or list-index failures on selector code are "empty_selection".
+- Self-intersecting, unclosed, invalid-wire, or cannot-build-face sketch failures are "degenerate_sketch".
+- Negative, zero, too-large, out-of-bounds, or invalid dimension failures are "parameter_overflow" unless the message clearly names topology or selection.
 - Successful run with no usable result is "silent_empty_result".
 - Successful run with valid geometry but wrong count is "silent_wrong_part_count".
 

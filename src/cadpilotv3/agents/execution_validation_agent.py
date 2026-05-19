@@ -6,6 +6,20 @@ from cadpilotv3.services.cadquery_execution_sandbox_service import (
     SandboxExecutionArtifacts,
 )
 
+PATCHABLE_ERROR_CLASSES = frozenset(
+    {
+        "syntax_error",
+        "indent_error",
+        "name_error",
+        "api_misuse",
+        "type_error",
+        "parameter_overflow",
+        "fillet_radius_overflow",
+        "export_format_error",
+        "import_error",
+    }
+)
+
 
 class ExecutionValidationAgent:
     def __init__(self, settings: AppSettings) -> None:
@@ -16,9 +30,15 @@ class ExecutionValidationAgent:
         artifacts: SandboxExecutionArtifacts,
     ) -> ValidationReport:
         if not artifacts.syntax_ok:
+            error_class = self._map_error_class(
+                artifacts.error_type,
+                artifacts.error_message,
+                artifacts.traceback_text,
+                artifacts.error_location.code_line,
+            )
             return ValidationReport(
                 status="syntax_error",
-                error_class=self._map_error_class(artifacts.error_type, artifacts.error_message),
+                error_class=error_class,
                 error_location={
                     "line": artifacts.error_location.line,
                     "function": artifacts.error_location.function,
@@ -34,7 +54,12 @@ class ExecutionValidationAgent:
             )
 
         if not artifacts.execution_succeeded:
-            error_class = self._map_error_class(artifacts.error_type, artifacts.error_message)
+            error_class = self._map_error_class(
+                artifacts.error_type,
+                artifacts.error_message,
+                artifacts.traceback_text,
+                artifacts.error_location.code_line,
+            )
             repair_complexity = self._map_repair_complexity(error_class)
 
             return ValidationReport(
@@ -195,59 +220,176 @@ class ExecutionValidationAgent:
     ) -> ValidationReport:
         return self.run(artifacts)
 
-    def _map_error_class(self, error_type: str | None, error_message: str | None) -> str:
-        error_type = (error_type or "").lower()
-        error_message_l = (error_message or "").lower()
+    def _map_error_class(
+        self,
+        error_type: str | None,
+        error_message: str | None,
+        traceback_text: str | None = None,
+        code_line: str | None = None,
+    ) -> str:
+        error_type_l = (error_type or "").lower()
+        diagnostic_text = " ".join(
+            part
+            for part in (
+                error_type or "",
+                error_message or "",
+                traceback_text or "",
+                code_line or "",
+            )
+            if part
+        ).lower()
 
-        if error_type == "syntaxerror":
+        if error_type_l == "syntaxerror":
             return "syntax_error"
-        if error_type == "indentationerror":
+        if error_type_l in {"indentationerror", "taberror"}:
             return "indent_error"
-        if error_type == "nameerror":
+        if error_type_l in {"nameerror", "unboundlocalerror"}:
             return "name_error"
-        if error_type == "attributeerror":
-            return "api_misuse"
-        if error_type == "typeerror":
-            return "type_error"
-        if error_type == "importerror" or error_type == "modulenotfounderror":
+        if error_type_l in {"importerror", "modulenotfounderror"}:
             return "import_error"
-        if "fillet" in error_message_l and (
-            "radius" in error_message_l or "notdone" in error_message_l
-        ):
-            return "fillet_radius_overflow"
-        if error_type == "valueerror":
-            return "parameter_overflow"
-        if "topology" in error_message_l or "brep" in error_message_l:
-            return "topology_error"
-        if "export" in error_message_l or "path" in error_message_l:
+
+        if self._looks_like_export_failure(diagnostic_text):
             return "export_format_error"
-        if (
-            "selector" in error_message_l
-            or "no faces" in error_message_l
-            or "no edges" in error_message_l
-        ):
+        if self._looks_like_empty_selection(diagnostic_text):
             return "empty_selection"
+        if self._looks_like_fillet_radius_failure(diagnostic_text):
+            return "fillet_radius_overflow"
+        if self._looks_like_degenerate_sketch(diagnostic_text):
+            return "degenerate_sketch"
+        if self._looks_like_topology_failure(diagnostic_text):
+            return "topology_error"
+
+        if error_type_l in {"attributeerror", "dispatcherror", "notimplementederror"}:
+            return "api_misuse"
+        if error_type_l == "typeerror":
+            return "type_error"
+        if error_type_l == "valueerror":
+            return "parameter_overflow"
+        if "multimethod" in diagnostic_text or "no method found" in diagnostic_text:
+            return "api_misuse"
+        if self._looks_like_parameter_overflow(diagnostic_text):
+            return "parameter_overflow"
 
         return "api_misuse"
 
+    def _looks_like_export_failure(self, diagnostic_text: str) -> bool:
+        export_terms = (
+            "export",
+            "exporters.",
+            ".step",
+            ".stp",
+            ".stl",
+            ".brep",
+            "unsupported format",
+            "file extension",
+            "permission denied",
+            "no such file or directory",
+        )
+        return any(term in diagnostic_text for term in export_terms)
+
+    def _looks_like_empty_selection(self, diagnostic_text: str) -> bool:
+        explicit_empty_selection_terms = (
+            "empty selection",
+            "nothing selected",
+            "no faces",
+            "no face",
+            "no edges",
+            "no edge",
+            "selector",
+            "selected no objects",
+            "did not match",
+        )
+        if any(term in diagnostic_text for term in explicit_empty_selection_terms):
+            return True
+
+        selector_code_terms = (
+            ".faces",
+            ".edges",
+            "faces(",
+            "edges(",
+            "vertices(",
+            ".vertices",
+        )
+        selection_failure_terms = (
+            "list index out of range",
+            "not enough values",
+            "no values",
+            "empty list",
+        )
+        return any(term in diagnostic_text for term in selector_code_terms) and any(
+            term in diagnostic_text for term in selection_failure_terms
+        )
+
+    def _looks_like_fillet_radius_failure(self, diagnostic_text: str) -> bool:
+        has_fillet_or_chamfer = "fillet" in diagnostic_text or "chamfer" in diagnostic_text
+        failure_terms = (
+            "radius",
+            "notdone",
+            "stdfail",
+            "brepfillet",
+            "failed",
+            "unable",
+        )
+        return has_fillet_or_chamfer and any(term in diagnostic_text for term in failure_terms)
+
+    def _looks_like_topology_failure(self, diagnostic_text: str) -> bool:
+        topology_terms = (
+            "topology",
+            "topological",
+            "brep",
+            "brep_api",
+            "brepalgo",
+            "topods",
+            "standard_failure",
+            "stdfail_notdone",
+            "boolean",
+            "bopalgo",
+            "cut failed",
+            "fuse failed",
+            "operation failed",
+            "non-manifold",
+            "non manifold",
+        )
+        return any(term in diagnostic_text for term in topology_terms)
+
+    def _looks_like_degenerate_sketch(self, diagnostic_text: str) -> bool:
+        sketch_terms = (
+            "degenerate sketch",
+            "self-intersect",
+            "self intersect",
+            "wire is not closed",
+            "wire not closed",
+            "cannot build face",
+            "invalid wire",
+        )
+        return any(term in diagnostic_text for term in sketch_terms)
+
+    def _looks_like_parameter_overflow(self, diagnostic_text: str) -> bool:
+        dimension_terms = (
+            "negative",
+            "must be positive",
+            "greater than zero",
+            "less than or equal",
+            "out of bounds",
+            "invalid dimension",
+            "too large",
+            "wall thickness",
+        )
+        return any(term in diagnostic_text for term in dimension_terms)
+
     def _map_repair_complexity(self, error_class: str) -> str:
-        if error_class in {
-            "syntax_error",
-            "indent_error",
-            "name_error",
-            "api_misuse",
-            "type_error",
-            "parameter_overflow",
-            "fillet_radius_overflow",
-            "export_format_error",
-            "import_error",
-        }:
+        if error_class in PATCHABLE_ERROR_CLASSES:
             return "patch"
 
         return "replan"
 
     def _build_error_summary(self, artifacts: SandboxExecutionArtifacts) -> str:
-        error_class = self._map_error_class(artifacts.error_type, artifacts.error_message)
+        error_class = self._map_error_class(
+            artifacts.error_type,
+            artifacts.error_message,
+            artifacts.traceback_text,
+            artifacts.error_location.code_line,
+        )
 
         if error_class == "syntax_error":
             return "The script could not be parsed because it contains a Python syntax error."
@@ -283,8 +425,18 @@ class ExecutionValidationAgent:
                 "The script could not run because a required module or import "
                 "path is unavailable."
             )
+        if error_class == "export_format_error":
+            return (
+                "The geometry may have been built, but the script failed while "
+                "writing the requested CAD export."
+            )
         if error_class == "topology_error":
             return "A Boolean or topological modeling operation failed during solid construction."
+        if error_class == "degenerate_sketch":
+            return (
+                "A 2D profile could not form a valid closed sketch for solid "
+                "construction."
+            )
         if error_class == "empty_selection":
             return (
                 "The script attempted a face or edge operation on geometry "
