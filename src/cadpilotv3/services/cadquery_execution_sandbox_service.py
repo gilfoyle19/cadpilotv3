@@ -22,6 +22,14 @@ class SandboxErrorLocation:
 
 
 @dataclass
+class SandboxChildGeometryReport:
+    name: str | None
+    bounding_box_mm: list[float]
+    center_mm: list[float]
+    volume_mm3: float
+
+
+@dataclass
 class SandboxGeometryReport:
     part_count: int
     bounding_box_mm: list[float]
@@ -30,6 +38,7 @@ class SandboxGeometryReport:
     face_count: int
     has_zero_volume_parts: bool
     assembly_valid: bool
+    child_metadata: list[SandboxChildGeometryReport] | None = None
 
 
 @dataclass
@@ -238,8 +247,8 @@ class CadQueryExecutionSandboxService:
 
         try:
             if obj.__class__.__name__ == "Assembly":
-                solids = self._extract_assembly_solids(obj)
-                if not solids:
+                child_shapes = self._extract_assembly_child_shapes(obj)
+                if not child_shapes:
                     return SandboxGeometryReport(
                         part_count=0,
                         bounding_box_mm=[0.0, 0.0, 0.0],
@@ -248,13 +257,19 @@ class CadQueryExecutionSandboxService:
                         face_count=0,
                         has_zero_volume_parts=True,
                         assembly_valid=False,
+                        child_metadata=[],
                     )
 
+                solids = [shape for _, shape in child_shapes]
                 bbox = self._combined_bounding_box(solids)
                 volume = sum(self._safe_volume(s) for s in solids)
                 face_count = sum(self._safe_face_count(s) for s in solids)
                 zero_volume = any(self._safe_volume(s) <= 1e-6 for s in solids)
                 manifold = all(self._safe_is_valid(s) for s in solids)
+                child_metadata = [
+                    self._build_child_geometry_report(name, shape)
+                    for name, shape in child_shapes
+                ]
 
                 return SandboxGeometryReport(
                     part_count=len(solids),
@@ -264,6 +279,7 @@ class CadQueryExecutionSandboxService:
                     face_count=face_count,
                     has_zero_volume_parts=zero_volume,
                     assembly_valid=manifold and not zero_volume,
+                    child_metadata=child_metadata,
                 )
 
             shape = self._coerce_to_shape(obj)
@@ -288,25 +304,70 @@ class CadQueryExecutionSandboxService:
         except Exception:
             return None
 
-    def _extract_assembly_solids(self, assembly: Any) -> list[Any]:
-        solids: list[Any] = []
+    def _extract_assembly_child_shapes(self, assembly: Any) -> list[tuple[str | None, Any]]:
+        child_shapes: list[tuple[str | None, Any]] = []
 
-        def walk(node: Any) -> None:
+        def walk(node: Any, parent_location: Any | None = None) -> None:
+            node_location = self._combine_locations(parent_location, getattr(node, "loc", None))
             obj = getattr(node, "obj", None)
             shape = self._coerce_to_shape(obj)
             if shape is not None:
-                solids.append(shape)
+                child_shapes.append(
+                    (
+                        getattr(node, "name", None),
+                        self._locate_shape(shape, node_location),
+                    )
+                )
 
             children = getattr(node, "children", None)
             if isinstance(children, list):
                 for child in children:
-                    walk(child)
+                    walk(child, node_location)
             elif isinstance(children, dict):
                 for child in children.values():
-                    walk(child)
+                    walk(child, node_location)
 
         walk(assembly)
-        return solids
+        return child_shapes
+
+    def _combine_locations(
+        self,
+        parent_location: Any | None,
+        child_location: Any | None,
+    ) -> Any | None:
+        if parent_location is None:
+            return child_location
+        if child_location is None:
+            return parent_location
+        try:
+            return parent_location * child_location
+        except Exception:
+            return child_location
+
+    def _locate_shape(self, shape: Any, location: Any | None) -> Any:
+        if location is None or not hasattr(shape, "located"):
+            return shape
+        try:
+            return shape.located(location)
+        except Exception:
+            return shape
+
+    def _build_child_geometry_report(
+        self,
+        name: str | None,
+        shape: Any,
+    ) -> SandboxChildGeometryReport:
+        bb = shape.BoundingBox()
+        return SandboxChildGeometryReport(
+            name=name,
+            bounding_box_mm=[bb.xlen, bb.ylen, bb.zlen],
+            center_mm=[
+                (bb.xmin + bb.xmax) / 2,
+                (bb.ymin + bb.ymax) / 2,
+                (bb.zmin + bb.zmax) / 2,
+            ],
+            volume_mm3=self._safe_volume(shape),
+        )
 
     def _coerce_to_shape(self, obj: Any) -> Any | None:
         if obj is None:

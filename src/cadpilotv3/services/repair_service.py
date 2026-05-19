@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class RepairService:
     def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
         self.agent = RepairAgent(settings)
 
     def execute(
@@ -41,6 +42,7 @@ class RepairService:
             validation=validation,
             repair_attempt_count=repair_attempt_count,
             repair_history=repair_history,
+            max_repair_attempts=self.settings.cad_max_repair_attempts,
         )
         self._log_decision_completed(decision)
 
@@ -70,6 +72,7 @@ class RepairService:
             validation=validation,
             repair_attempt_count=repair_attempt_count,
             repair_history=repair_history,
+            max_repair_attempts=self.settings.cad_max_repair_attempts,
         )
         self._log_decision_completed(decision)
 

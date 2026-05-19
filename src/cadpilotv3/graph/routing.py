@@ -43,7 +43,7 @@ def route_repair(
     decision = state["repair_decision"]
     max_attempts = get_settings().cad_max_repair_attempts
 
-    if state["repair_count"] > max_attempts:
+    if state["repair_count"] >= max_attempts:
         return "critic_checkpoint_b"
 
     if decision.action == "patch":

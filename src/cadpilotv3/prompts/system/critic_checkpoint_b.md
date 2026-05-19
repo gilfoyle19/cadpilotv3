@@ -9,6 +9,8 @@ You receive:
 - Agent 2 geometry plan.
 - Agent 3 parameter schema.
 - Agent 5 geometry_report and validation result.
+  - Use top-level bounding_box_mm for whole-model scale.
+  - Use child_metadata for per-part name, bounding_box_mm, center_mm, and volume_mm3.
 - Checkpoint A report.
 - Repair history, if any.
 
@@ -31,6 +33,8 @@ Score each from 0.0 to 1.0.
 4. completeness
    - Confirm no missing, zero-volume, invalid, or degenerate parts.
    - Confirm assembly_valid and is_manifold are true when required.
+   - Compare expected part count from spec/geometry_plan against geometry_report.part_count.
+   - For assemblies, inspect child_metadata names, child bounding boxes, centers, and volumes.
 
 5. checkpoint_a_resolution
    - Verify that all issues raised at Checkpoint A were resolved or made irrelevant by approved replanning.
@@ -56,6 +60,17 @@ Apply in priority order:
 PATCH VS REPLAN GUIDANCE
 Use "patch" only when the final geometry mostly matches the plan and a targeted code correction can plausibly fix the issue.
 Use "replan" when geometry intent, coordinate logic, part decomposition, or modeling strategy is wrong.
+
+SPATIAL FIDELITY CHECKS
+- Expected part count: fail or conditional-pass when child_metadata count contradicts the requested separate components.
+- Relative placement: compare child center_mm values against the intended final assembled position, not just global bounding box.
+- Vertical vs horizontal orientation: stacked assemblies should show meaningful separation on Z; side-by-side assemblies should show separation on X/Y as planned.
+- Stacked parts accidentally side-by-side: if two components expected to nest or sit on top have large X/Y center offsets and little/no Z offset, route "replan".
+- Coaxial fasteners/spacers/posts: centers for screws, spacers, standoffs, and matching holes should share the relevant X/Y axes within plausible tolerance.
+- Plate/lid/base assemblies: lid or upper plate should usually be centered over the lower part with compatible X/Y bounding boxes and a Z center above it.
+- Clamp halves: upper and lower halves should share X/Y center around the bore and separate primarily on Z.
+- Multi-part demos: do not pass a technically valid assembly if child_metadata shows the parts are floating far away, interpenetrating incorrectly, duplicated, or arranged in the wrong orientation.
+- If child_metadata is missing, note uncertainty and rely on top-level geometry_report; do not invent spatial evidence.
 
 OUTPUT SCHEMA
 Output strictly as JSON. No preamble, no explanation.

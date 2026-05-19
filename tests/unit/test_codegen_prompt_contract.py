@@ -90,3 +90,19 @@ def test_codegen_prompt_makes_generated_validation_robust() -> None:
     assert "volume_ratio" in system_prompt
     assert "operation-local before/after" in system_prompt
     assert "checks near the cut operation" in system_prompt
+
+
+def test_critic_b_prompt_uses_child_metadata_for_spatial_fidelity() -> None:
+    critic_b_prompt = (
+        PROMPT_ROOT / "system" / "critic_checkpoint_b.md"
+    ).read_text(encoding="utf-8")
+    critic_b_examples = (
+        PROMPT_ROOT / "examples" / "critic_b_examples.md"
+    ).read_text(encoding="utf-8")
+
+    assert "child_metadata" in critic_b_prompt
+    assert "center_mm" in critic_b_prompt
+    assert "stacked parts accidentally side-by-side" in critic_b_prompt.lower()
+    assert "coaxial fasteners/spacers" in critic_b_prompt.lower()
+    assert "Side-by-Side Parts That Should Be Stacked" in critic_b_examples
+    assert "base center [0,0,15] and lid center [105,0,1.5]" in critic_b_examples

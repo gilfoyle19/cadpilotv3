@@ -11,7 +11,21 @@ INPUT:
     "bounding_box_mm": [100.0, 60.0, 35.0],
     "is_manifold": true,
     "has_zero_volume_parts": false,
-    "assembly_valid": true
+    "assembly_valid": true,
+    "child_metadata": [
+      {
+        "name": "base",
+        "bounding_box_mm": [100.0, 60.0, 30.0],
+        "center_mm": [0.0, 0.0, 15.0],
+        "volume_mm3": 10200.0
+      },
+      {
+        "name": "lid",
+        "bounding_box_mm": [100.0, 60.0, 3.0],
+        "center_mm": [0.0, 0.0, 31.5],
+        "volume_mm3": 18000.0
+      }
+    ]
   },
   "checkpoint_a": "pass"
 }
@@ -35,6 +49,73 @@ OUTPUT:
   "routing": "export",
   "patch_instructions": null,
   "replan_instructions": null,
+  "user_facing_warnings": []
+}
+```
+
+### Example 3 - Replan Due to Side-by-Side Parts That Should Be Stacked
+
+INPUT:
+```json
+{
+  "spec": "static two-part enclosure with lid closed on top of base",
+  "geometry_plan": {
+    "artifact_type": "static_assembly",
+    "parts": ["open_top_base", "flat_lid"]
+  },
+  "geometry_report": {
+    "part_count": 2,
+    "bounding_box_mm": [205.0, 62.0, 30.0],
+    "is_manifold": true,
+    "has_zero_volume_parts": false,
+    "assembly_valid": true,
+    "child_metadata": [
+      {
+        "name": "base",
+        "bounding_box_mm": [100.0, 60.0, 30.0],
+        "center_mm": [0.0, 0.0, 15.0],
+        "volume_mm3": 11000.0
+      },
+      {
+        "name": "lid",
+        "bounding_box_mm": [100.0, 60.0, 3.0],
+        "center_mm": [105.0, 0.0, 1.5],
+        "volume_mm3": 18000.0
+      }
+    ]
+  },
+  "observed_issue": "The lid is placed next to the base instead of closed on top."
+}
+```
+
+OUTPUT:
+```json
+{
+  "checkpoint": "B",
+  "verdict": "fail",
+  "overall_fidelity_score": 0.62,
+  "dimension_scores": {
+    "dof_count_verification": 1.0,
+    "scale_consistency": 0.45,
+    "constraint_satisfaction": 0.35,
+    "completeness": 0.8,
+    "checkpoint_a_resolution": 0.8,
+    "regression_detection": 0.4
+  },
+  "issues": [
+    {
+      "dimension": "constraint_satisfaction",
+      "severity": "critical",
+      "score": 0.35,
+      "description": "The lid is modeled as a separate component but is not in the closed assembled position on top of the base.",
+      "evidence": "child_metadata shows base center [0,0,15] and lid center [105,0,1.5], so the parts are separated in X instead of stacked in Z.",
+      "suggested_routing": "replan",
+      "correction": "Replan the assembly transforms so the lid shares the base X/Y center and sits above the base in Z."
+    }
+  ],
+  "routing": "replan",
+  "patch_instructions": null,
+  "replan_instructions": "Place the lid concentrically over the base in the closed position. Preserve two separate assembly components and align matching holes/standoffs by X/Y center.",
   "user_facing_warnings": []
 }
 ```

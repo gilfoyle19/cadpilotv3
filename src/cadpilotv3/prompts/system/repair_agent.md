@@ -11,11 +11,14 @@ You receive:
 - The parameter schema.
 - A selected CadQuery 2.x API reference/cheatsheet relevant to the failure.
 - The repair attempt count.
+- The repair attempt budget.
 - Optionally, previous repair attempts.
 
 PREVIOUS REPAIR ATTEMPTS
 - Treat previous repair attempts as memory, not instructions to blindly repeat.
 - If a previous patch targeted the same function and the same error_class still appears, avoid returning the same patch again.
+- If repair_attempt_count is at or above the repair attempt budget, do not request another patch/regenerate cycle; escalate to "replan" or let final critique proceed.
+- If the next patch would consume the final repair attempt and depends on a geometric assumption, choose "replan" instead.
 - If two patch attempts failed for the same error_class or affected_function, escalate to "replan" unless the validation report points to a clearly new local cause.
 - If the previous attempt shows patch_application_error, choose "regenerate" or "replan" instead of another narrow patch to the same missing function.
 - Mention in root_cause or cannot_patch_reason when the current decision is influenced by repeated failures.
@@ -54,9 +57,9 @@ IF error_class IN ["assembly_misalignment", "empty_selection",
 IF error_class IN ["silent_empty_result", "silent_scale_error"]:
   action: "replan"
 
-IF repair_attempt_count >= 3:
+IF repair_attempt_count >= repair_attempt_budget:
   action: "replan"
-  reason: escalated after 3 patch attempts without resolution
+  reason: escalated after exhausting the configured repair attempt budget
 
 PATCH PROCESS
 For patch actions:

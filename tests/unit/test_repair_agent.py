@@ -156,6 +156,7 @@ def test_repair_agent_prompt_includes_compact_previous_attempts(monkeypatch) -> 
             repair_needed=True,
         ),
         repair_attempt_count=2,
+        max_repair_attempts=2,
         repair_history=[
             {
                 "attempt_index": 0,
@@ -170,6 +171,7 @@ def test_repair_agent_prompt_includes_compact_previous_attempts(monkeypatch) -> 
 
     assert result.action == "replan"
     assert "Previous repair attempts:" in captured["prompt"]
+    assert "Repair attempt budget: 2" in captured["prompt"]
     assert "attempt_index: 0" in captured["prompt"]
     assert "validation_error_class: empty_selection" in captured["prompt"]
     assert "irrelevant_large_blob" not in captured["prompt"]

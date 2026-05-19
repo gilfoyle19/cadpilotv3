@@ -26,6 +26,7 @@ class RepairAgent:
         validation: ValidationReport,
         repair_attempt_count: int,
         repair_history: list[dict[str, Any]] | None = None,
+        max_repair_attempts: int | None = None,
     ) -> RepairOutput:
         llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
         prompt = self._build_prompt(
@@ -35,6 +36,7 @@ class RepairAgent:
             validation=validation,
             repair_attempt_count=repair_attempt_count,
             repair_history=repair_history,
+            max_repair_attempts=max_repair_attempts,
         )
 
         return invoke_pydantic(
@@ -53,6 +55,7 @@ class RepairAgent:
         validation: ValidationReport,
         repair_attempt_count: int,
         repair_history: list[dict[str, Any]] | None = None,
+        max_repair_attempts: int | None = None,
     ) -> RepairOutput:
         llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
         prompt = self._build_prompt(
@@ -62,6 +65,7 @@ class RepairAgent:
             validation=validation,
             repair_attempt_count=repair_attempt_count,
             repair_history=repair_history,
+            max_repair_attempts=max_repair_attempts,
         )
 
         return await ainvoke_pydantic(
@@ -81,6 +85,7 @@ class RepairAgent:
         validation: ValidationReport,
         repair_attempt_count: int,
         repair_history: list[dict[str, Any]] | None = None,
+        max_repair_attempts: int | None = None,
     ) -> str:
         system_prompt = load_prompt_text(self.settings, "repair_agent.md")
         few_shot_prompt = load_prompt_text(
@@ -111,11 +116,17 @@ class RepairAgent:
                 "Validation report:",
                 validation.model_dump_json(indent=2),
                 f"Repair attempt count: {repair_attempt_count}",
+                self._format_repair_budget(max_repair_attempts),
                 "Previous repair attempts:",
                 self._format_repair_history(repair_history),
             ]
         )
         return prompt
+
+    def _format_repair_budget(self, max_repair_attempts: int | None) -> str:
+        if max_repair_attempts is None:
+            return "Repair attempt budget: not provided"
+        return f"Repair attempt budget: {max_repair_attempts}"
 
     def _format_repair_history(self, repair_history: list[dict[str, Any]] | None) -> str:
         if not repair_history:

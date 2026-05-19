@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ErrorLocation(BaseModel):
@@ -9,6 +9,17 @@ class ErrorLocation(BaseModel):
     line: int | None = None
     function: str | None = None
     code_line: str | None = None
+
+
+class ChildGeometryReport(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    name: str | None = None
+    bounding_box_mm: list[float] | None = None
+    center_mm: list[float] | None = None
+    volume_mm3: float | None = None
 
 
 class GeometryReport(BaseModel):
@@ -24,6 +35,7 @@ class GeometryReport(BaseModel):
     face_count: int | None = None
     has_zero_volume_parts: bool | None = None
     assembly_valid: bool | None = None
+    child_metadata: list[ChildGeometryReport] | None = None
 
 
 class ValidationReport(BaseModel):

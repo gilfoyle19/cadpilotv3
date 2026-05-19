@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from cadpilotv3.agents.code_generation_infill_agent import CodeGenerationInfillAgent
+from cadpilotv3.graph import routing
 from cadpilotv3.graph.nodes import PipelineNodes
 from cadpilotv3.graph.routing import route_repair
 from cadpilotv3.services.code_generation_infill_service import (
@@ -432,6 +433,20 @@ def test_route_repair_sends_regenerate_to_codegen() -> None:
     }
 
     assert route_repair(state) == "code_generation_infill_agent"
+
+
+def test_route_repair_stops_when_attempt_budget_is_exhausted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_repair_attempts=2),
+    )
+    state = {
+        "repair_decision": SimpleNamespace(action="patch"),
+        "repair_count": 2,
+    }
+
+    assert route_repair(state) == "critic_checkpoint_b"
 
 
 def test_execute_script_retries_after_empty_generation(tmp_path) -> None:

@@ -120,15 +120,7 @@ class ExecutionValidationAgent:
                 geometry_valid=False,
                 repair_needed=True,
                 repair_complexity="replan",
-                geometry_report={
-                    "part_count": geometry.part_count,
-                    "bounding_box_mm": geometry.bounding_box_mm,
-                    "volume_mm3": geometry.volume_mm3,
-                    "is_manifold": geometry.is_manifold,
-                    "face_count": geometry.face_count,
-                    "has_zero_volume_parts": geometry.has_zero_volume_parts,
-                    "assembly_valid": geometry.assembly_valid,
-                },
+                geometry_report=self._geometry_report_payload(geometry),
             )
 
         if not geometry.is_manifold:
@@ -149,15 +141,7 @@ class ExecutionValidationAgent:
                 geometry_valid=False,
                 repair_needed=True,
                 repair_complexity="replan",
-                geometry_report={
-                    "part_count": geometry.part_count,
-                    "bounding_box_mm": geometry.bounding_box_mm,
-                    "volume_mm3": geometry.volume_mm3,
-                    "is_manifold": geometry.is_manifold,
-                    "face_count": geometry.face_count,
-                    "has_zero_volume_parts": geometry.has_zero_volume_parts,
-                    "assembly_valid": geometry.assembly_valid,
-                },
+                geometry_report=self._geometry_report_payload(geometry),
             )
 
         if not geometry.assembly_valid:
@@ -178,15 +162,7 @@ class ExecutionValidationAgent:
                 geometry_valid=False,
                 repair_needed=True,
                 repair_complexity="replan",
-                geometry_report={
-                    "part_count": geometry.part_count,
-                    "bounding_box_mm": geometry.bounding_box_mm,
-                    "volume_mm3": geometry.volume_mm3,
-                    "is_manifold": geometry.is_manifold,
-                    "face_count": geometry.face_count,
-                    "has_zero_volume_parts": geometry.has_zero_volume_parts,
-                    "assembly_valid": geometry.assembly_valid,
-                },
+                geometry_report=self._geometry_report_payload(geometry),
             )
 
         return ValidationReport(
@@ -203,15 +179,7 @@ class ExecutionValidationAgent:
             geometry_valid=True,
             repair_needed=False,
             repair_complexity=None,
-            geometry_report={
-                "part_count": geometry.part_count,
-                "bounding_box_mm": geometry.bounding_box_mm,
-                "volume_mm3": geometry.volume_mm3,
-                "is_manifold": geometry.is_manifold,
-                "face_count": geometry.face_count,
-                "has_zero_volume_parts": geometry.has_zero_volume_parts,
-                "assembly_valid": geometry.assembly_valid,
-            },
+            geometry_report=self._geometry_report_payload(geometry),
         )
 
     async def arun(
@@ -219,6 +187,26 @@ class ExecutionValidationAgent:
         artifacts: SandboxExecutionArtifacts,
     ) -> ValidationReport:
         return self.run(artifacts)
+
+    def _geometry_report_payload(self, geometry) -> dict:
+        return {
+            "part_count": geometry.part_count,
+            "bounding_box_mm": geometry.bounding_box_mm,
+            "volume_mm3": geometry.volume_mm3,
+            "is_manifold": geometry.is_manifold,
+            "face_count": geometry.face_count,
+            "has_zero_volume_parts": geometry.has_zero_volume_parts,
+            "assembly_valid": geometry.assembly_valid,
+            "child_metadata": [
+                {
+                    "name": child.name,
+                    "bounding_box_mm": child.bounding_box_mm,
+                    "center_mm": child.center_mm,
+                    "volume_mm3": child.volume_mm3,
+                }
+                for child in (geometry.child_metadata or [])
+            ],
+        }
 
     def _map_error_class(
         self,
