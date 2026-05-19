@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +7,8 @@ from pydantic import ValidationError
 from cadpilotv3.agents.parameter_agent import ParameterAgent
 from cadpilotv3.graph.nodes import PipelineNodes
 from cadpilotv3.schemas.parameters import ParameterSchema
+
+PROMPT_ROOT = Path("src/cadpilotv3/prompts")
 
 
 def _parameter(value: float, description: str = "Parameter.") -> dict:
@@ -152,3 +155,15 @@ def test_parameter_agent_prompt_includes_original_prompt_and_spec(monkeypatch) -
     assert "80mm long, 40mm wide, and 4mm thick" in captured["prompt"]
     assert "Structured spec:" in captured["prompt"]
     assert "explicit_dimensions" in captured["prompt"]
+
+
+def test_parameter_prompt_emphasizes_literal_json_number_contract() -> None:
+    system_prompt = (
+        PROMPT_ROOT / "system" / "parameter_agent.md"
+    ).read_text(encoding="utf-8")
+
+    assert "CRITICAL JSON NUMBER CONTRACT" in system_prompt
+    assert "value, min, and max must be literal JSON numbers only" in system_prompt
+    assert "Never put formulas, parentheses, arithmetic expressions" in system_prompt
+    assert '"value": "PLATE_L / 2 - EDGE_INSET"' in system_prompt
+    assert '"value": 32.0' in system_prompt

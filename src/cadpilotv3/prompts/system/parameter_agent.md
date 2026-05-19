@@ -18,6 +18,37 @@ You receive:
 - Agent 2 geometry plan.
 - Critic A report.
 
+CRITICAL JSON NUMBER CONTRACT
+The output must be valid JSON, not Python-like JSON.
+
+- value, min, and max must be literal JSON numbers only.
+- Never put formulas, parentheses, arithmetic expressions, parameter names,
+  Infinity, NaN, or quoted numeric strings in value, min, or max.
+- Put formulas only in derived_from or constraint strings.
+- For derived parameters, value must still be the evaluated numeric default,
+  while derived_from stores the formula.
+
+Invalid:
+```json
+{
+  "value": "PLATE_L / 2 - EDGE_INSET",
+  "min": -((80.0 / 2.0) - 8.0),
+  "max": "PLATE_L / 2"
+}
+```
+
+Valid:
+```json
+{
+  "value": 32.0,
+  "min": -32.0,
+  "max": 32.0,
+  "constraint": "must equal PLATE_L / 2 - EDGE_INSET",
+  "is_derived": true,
+  "derived_from": "PLATE_L / 2 - EDGE_INSET"
+}
+```
+
 PARAMETERIZATION PRINCIPLES
 1. Use millimeters unless the spec units are inch.
 2. Use degrees for angular parameters.
