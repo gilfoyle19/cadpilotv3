@@ -177,6 +177,96 @@ def test_repair_agent_prompt_includes_compact_previous_attempts(monkeypatch) -> 
     assert "irrelevant_large_blob" not in captured["prompt"]
 
 
+def test_repair_agent_prompt_uses_targeted_script_context(monkeypatch) -> None:
+    captured = {}
+
+    class FakeLLM:
+        def invoke(self, prompt: str) -> str:
+            captured["prompt"] = prompt
+            return """
+{
+  "action": "patch",
+  "error_class": "api_misuse",
+  "root_cause": "The through hole was created with a forbidden helper.",
+  "fix_description": "Replace the helper call with an explicit cutter.",
+  "patch_type": "api",
+  "affected_function": "build_part",
+  "patched_code": "def build_part():\\n    return cq.Workplane('XY').box(1, 1, 1)",
+  "confidence": "high",
+  "confidence_note": null
+}
+"""
+
+    class FakeLLMFactory:
+        def get_for_agent(self, _agent_name):
+            return FakeLLM()
+
+    prompts = {
+        "repair_agent.md": "repair system prompt",
+        "repair_agent_examples.md": """
+### Example 1 - Patch Hole Helper
+INPUT: hole helper api_misuse
+OUTPUT: patch explicit cutter
+
+### Example 2 - Replan Sheet Metal
+INPUT: sheet metal bend failed
+OUTPUT: replan
+""",
+        "cheatsheet.md": "cadquery_cheatsheet:",
+    }
+    monkeypatch.setattr(
+        "cadpilotv3.agents.repair_agent.load_prompt_text",
+        lambda _settings, name: prompts[name],
+    )
+
+    agent = RepairAgent(settings=SimpleNamespace())
+    agent.llm_factory = FakeLLMFactory()
+    script = "\n\n".join(
+        [
+            "import cadquery as cq",
+            "PLATE_T = 4.0",
+            "def unused_large_helper():\n    return 'do not include me' * 500",
+            (
+                "def build_part():\n"
+                "    return cq.Workplane('XY').box(40, 20, PLATE_T).hole(4)"
+            ),
+        ]
+    )
+
+    agent.run(
+        script=script,
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[],
+            model_dump_json=lambda indent=2: "{}",
+        ),
+        parameters=SimpleNamespace(
+            parameters={},
+            model_dump_json=lambda indent=2: "{}",
+        ),
+        validation=ValidationReport(
+            status="runtime_error",
+            error_class="api_misuse",
+            error_location=ErrorLocation(
+                function="build_part",
+                code_line="return cq.Workplane('XY').box(40, 20, PLATE_T).hole(4)",
+            ),
+            error_message="Workplane.hole is disallowed",
+            error_summary="Use explicit cutter solids for holes.",
+            geometry_valid=False,
+            repair_needed=True,
+        ),
+        repair_attempt_count=1,
+    )
+
+    assert "Targeted script context:" in captured["prompt"]
+    assert "PLATE_T = 4.0" in captured["prompt"]
+    assert "def build_part" in captured["prompt"]
+    assert "unused_large_helper" not in captured["prompt"]
+    assert "Patch Hole Helper" in captured["prompt"]
+    assert "Replan Sheet Metal" not in captured["prompt"]
+
+
 def test_repair_cheatsheet_retrieval_selects_error_related_blocks() -> None:
     agent = object.__new__(RepairAgent)
     cheatsheet = """

@@ -401,7 +401,7 @@ class CodeGenerationInfillAgent:
         cheatsheet: str,
         spec: IntentSpec,
         geometry_plan: GeometryPlan,
-        max_blocks: int = 18,
+        max_blocks: int = 12,
     ) -> str:
         query_terms = self._build_example_query_terms(spec, geometry_plan)
         query_terms.update(self._infer_cadquery_operation_terms(spec, geometry_plan))

@@ -157,6 +157,38 @@ def test_parameter_agent_prompt_includes_original_prompt_and_spec(monkeypatch) -
     assert "explicit_dimensions" in captured["prompt"]
 
 
+def test_parameter_agent_selects_relevant_few_shot_examples() -> None:
+    agent = object.__new__(ParameterAgent)
+    few_shots = """
+### Example 1 - Static Servo Bracket Parameters
+INPUT: servo bracket with gussets
+OUTPUT: SERVO_PLATE_H
+
+### Example 2 - Static Assembly Parameters
+INPUT: two part electronics enclosure with base and lid
+OUTPUT: OUTER_L, OUTER_W, LID_TOP_T
+"""
+
+    selected = agent._select_relevant_examples(
+        few_shot_prompt=few_shots,
+        spec=SimpleNamespace(
+            component="two_part_electronics_enclosure",
+            component_type="static_assembly",
+            style="rectangular enclosure",
+            manufacturing_process="FDM",
+            parts=["base", "lid"],
+            constraints=["m3 standoffs"],
+        ),
+        geometry_plan=SimpleNamespace(
+            artifact_type="static_assembly",
+            parts=[],
+        ),
+    )
+
+    assert "Static Assembly Parameters" in selected
+    assert "Static Servo Bracket Parameters" not in selected
+
+
 def test_parameter_prompt_emphasizes_literal_json_number_contract() -> None:
     system_prompt = (
         PROMPT_ROOT / "system" / "parameter_agent.md"
