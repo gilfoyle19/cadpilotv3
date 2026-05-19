@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import AsyncIterator
 
+from cadpilotv3.agents.cheatsheet_safety import filter_forbidden_cheatsheet_blocks
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
@@ -257,8 +258,9 @@ class CodeGenerationInfillAgent:
                     "actually changed the returned solid."
                 ),
                 (
-                    "Avoid Workplane.hole(); use explicit cutter solids. Use only "
-                    "CadQuery 2.x and Python standard-library imports."
+                    "Avoid Workplane.hole(), Workplane.cboreHole(), and "
+                    "Workplane.cskHole(); use explicit cutter solids and .cut(). "
+                    "Use only CadQuery 2.x and Python standard-library imports."
                 ),
                 "Previous failure:",
                 generation_feedback or "The previous output was unusable.",
@@ -386,9 +388,12 @@ class CodeGenerationInfillAgent:
         query_terms = self._build_example_query_terms(spec, geometry_plan)
         query_terms.update(self._infer_cadquery_operation_terms(spec, geometry_plan))
 
-        blocks = self._split_cheatsheet_blocks(cheatsheet)
-        if not blocks:
+        raw_blocks = self._split_cheatsheet_blocks(cheatsheet)
+        if not raw_blocks:
             return cheatsheet
+        blocks = filter_forbidden_cheatsheet_blocks(raw_blocks)
+        if not blocks:
+            return "cadquery_cheatsheet:"
 
         selected: list[str] = []
         for block in blocks:
@@ -454,6 +459,7 @@ class CodeGenerationInfillAgent:
             ".union(",
             ".translate(vec",
             "exporters.export",
+            "canonical explicit cutter patterns",
         ]
         return any(marker in block_l for marker in core_markers)
 

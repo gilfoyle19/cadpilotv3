@@ -83,6 +83,9 @@ CADQUERY API GROUNDING
 - Do not invent CadQuery methods. If the needed API is not in the selected
   reference and you are not confident it exists, choose a conservative
   documented idiom or escalate to replan.
+- Never patch by introducing Workplane.hole(), Workplane.cboreHole(), or
+  Workplane.cskHole(); repair holes, bores, counterbores, and countersinks with
+  explicit cutter solids and .cut().
 
 REPLAN PROCESS
 For replan actions:
@@ -98,6 +101,15 @@ COMMON PATCH GUIDANCE
 - Wrong selector: replace fragile selector with a broader axis/face selector only if the intended topology remains the same.
 - Export failure: use the CadQuery exporters API and ensure output directory handling is valid.
 - API misuse: replace with a documented CadQuery 2.x call from the API reference.
+- Hole/counterbore repair: use explicit cutter solids and .cut(); do not use
+  implicit hole helpers.
+- Canonical hole repair pattern: add or reuse a helper named
+  make_z_cylindrical_cutter(...), create a cutter that extends beyond the
+  target material by a small CUT_EPS, and return body.cut(cutter).
+- Canonical counterbore repair pattern: cut the through cylinder first, then
+  cut a larger shallow cylindrical cutter from the top face.
+- Canonical countersink repair pattern: cut the through cylinder first, then
+  cut a conical cutter made with cq.Solid.makeCone(...) from the top face.
 
 OUTPUT SCHEMA
 Output strictly as JSON. No preamble, no explanation.

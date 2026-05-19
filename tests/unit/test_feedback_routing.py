@@ -153,16 +153,33 @@ def test_extract_generated_code_strips_bare_python_prefix() -> None:
     assert not code.startswith("python")
 
 
-def test_codegen_preflight_rejects_workplane_hole_call() -> None:
+@pytest.mark.parametrize(
+    ("method_name", "arguments"),
+    [
+        ("hole", "0.5"),
+        ("cboreHole", "0.5, 0.8, 0.2"),
+        ("cskHole", "0.5, 0.8, 82.0"),
+    ],
+)
+def test_codegen_preflight_rejects_implicit_hole_helpers(
+    method_name: str,
+    arguments: str,
+) -> None:
     service = object.__new__(CodeGenerationInfillService)
 
-    with pytest.raises(CodeGenerationOutputError):
+    with pytest.raises(CodeGenerationOutputError, match=method_name):
         service._validate_generated_code(
             "\n".join(
                 [
                     "import cadquery as cq",
                     "def build_part():",
-                    "    return cq.Workplane('XY').box(1, 1, 1).faces('>Z').hole(0.5)",
+                    "    return (",
+                    "        cq.Workplane('XY')",
+                    "        .box(1, 1, 1)",
+                    "        .faces('>Z')",
+                    "        .workplane()",
+                    f"        .{method_name}({arguments})",
+                    "    )",
                     "def validate_geometry(model):",
                     "    return {}",
                     "def export_all(model, output_dir='.'):",
@@ -554,3 +571,73 @@ import cadquery as cq
     assert ".slot2D(length, diameter)" in selected
     assert ".chamfer(d)" in selected
     assert ".text(txt, fontsize, distance)" not in selected
+
+
+def test_codegen_cheatsheet_retrieval_quarantines_forbidden_hole_helpers() -> None:
+    agent = object.__new__(CodeGenerationInfillAgent)
+    cheatsheet = """
+cadquery_cheatsheet:
+"All dimensions are in mm"
+
+**Rule**: Use when user wants to drill simple holes.
+**Method**:
+```python
+.hole(diameter[, depth=None])
+```
+
+**Rule**: Use when user wants to create a counterbored hole.
+**Method**:
+```python
+.cboreHole(diameter, cboreDiameter[, depth=None])
+```
+
+**Rule**: Use when user wants to create a countersunk hole.
+**Method**:
+```python
+.cskHole(diameter, cskDiameter[, depth=None])
+```
+
+**Rule**: Canonical explicit cutter patterns for holes.
+**Method**:
+```python
+def cut_through_hole_z(body, x, y, bottom_z, top_z, diameter):
+    depth = (top_z - bottom_z) + 0.4
+    cutter = cq.Workplane("XY").center(x, y).cylinder(depth, diameter / 2)
+    return body.cut(cutter)
+
+cutter = cq.Workplane("XY").cylinder(cut_depth, hole_radius)
+body = body.cut(cutter)
+```
+"""
+
+    selected = agent._select_relevant_cheatsheet(
+        cheatsheet=cheatsheet,
+        spec=SimpleNamespace(
+            component="mounting_plate",
+            component_type="single_part",
+            style="flat_plate",
+            manufacturing_process="FDM",
+            approximate_scale="small",
+            parts=["plate", "m4_clearance_holes"],
+            constraints=["four through holes"],
+        ),
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[
+                SimpleNamespace(
+                    name="plate_with_holes",
+                    modeling_strategy="primitive_csg",
+                    key_features=[
+                        SimpleNamespace(feature="explicit through hole cutters"),
+                    ],
+                )
+            ],
+        ),
+        max_blocks=6,
+    )
+
+    assert "Canonical explicit cutter patterns" in selected
+    assert "def cut_through_hole_z" in selected
+    assert ".hole(" not in selected
+    assert ".cboreHole(" not in selected
+    assert ".cskHole(" not in selected

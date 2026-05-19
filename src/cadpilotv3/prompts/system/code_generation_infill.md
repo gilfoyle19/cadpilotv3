@@ -43,6 +43,107 @@ INVALID: Fillet radius greater than or equal to half the adjacent wall thickness
 INVALID: Hardcoded dimensions in feature geometry.
   Use named parameters and derived constants from the parameter schema.
 
+INVALID: implicit hole helper methods.
+  Do not use Workplane.hole(), Workplane.cboreHole(), or Workplane.cskHole().
+  WRONG: part.faces(">Z").workplane().hole(d)
+  WRONG: part.faces(">Z").workplane().cboreHole(clear_d, cbore_d, cbore_depth)
+  WRONG: part.faces(">Z").workplane().cskHole(clear_d, csk_d, csk_angle)
+  RIGHT: create explicit cylindrical, conical, or prismatic cutter solids with
+  the intended axis and depth, then subtract them with .cut().
+
+CANONICAL EXPLICIT CUTTER PATTERNS
+Use these patterns when the plan calls for holes, bores, counterbores,
+countersinks, or other subtractive round features. Keep cutter dimensions named
+and make each cutter pass slightly beyond the target material.
+
+```python
+CUT_EPS = 0.2
+
+
+def make_z_cylindrical_cutter(
+    x: float,
+    y: float,
+    z_center: float,
+    diameter: float,
+    depth: float,
+) -> cq.Workplane:
+    return (
+        cq.Workplane("XY")
+        .center(x, y)
+        .cylinder(depth, diameter / 2, centered=(True, True, True))
+        .translate((0, 0, z_center))
+    )
+
+
+def cut_through_hole_z(
+    body: cq.Workplane,
+    x: float,
+    y: float,
+    bottom_z: float,
+    top_z: float,
+    diameter: float,
+) -> cq.Workplane:
+    depth = (top_z - bottom_z) + 2 * CUT_EPS
+    z_center = (top_z + bottom_z) / 2
+    cutter = make_z_cylindrical_cutter(x, y, z_center, diameter, depth)
+    return body.cut(cutter)
+
+
+def cut_counterbore_z(
+    body: cq.Workplane,
+    x: float,
+    y: float,
+    top_z: float,
+    through_diameter: float,
+    counterbore_diameter: float,
+    counterbore_depth: float,
+    total_depth: float,
+) -> cq.Workplane:
+    body = cut_through_hole_z(
+        body, x, y, top_z - total_depth, top_z, through_diameter
+    )
+    cbore_center_z = top_z - counterbore_depth / 2 + CUT_EPS / 2
+    cbore = make_z_cylindrical_cutter(
+        x, y, cbore_center_z, counterbore_diameter, counterbore_depth + CUT_EPS
+    )
+    return body.cut(cbore)
+
+
+def make_top_countersink_cutter_z(
+    x: float,
+    y: float,
+    top_z: float,
+    through_diameter: float,
+    countersink_diameter: float,
+    countersink_depth: float,
+) -> cq.Workplane:
+    cone = cq.Solid.makeCone(
+        countersink_diameter / 2,
+        through_diameter / 2,
+        countersink_depth + CUT_EPS,
+        pnt=cq.Vector(x, y, top_z + CUT_EPS),
+        dir=cq.Vector(0, 0, -1),
+    )
+    return cq.Workplane("XY").add(cone)
+
+
+def cut_countersink_z(
+    body: cq.Workplane,
+    x: float,
+    y: float,
+    bottom_z: float,
+    top_z: float,
+    through_diameter: float,
+    countersink_diameter: float,
+    countersink_depth: float,
+) -> cq.Workplane:
+    body = cut_through_hole_z(body, x, y, bottom_z, top_z, through_diameter)
+    countersink = make_top_countersink_cutter_z(
+        x, y, top_z, through_diameter, countersink_diameter, countersink_depth
+    )
+    return body.cut(countersink)
+```
+
 SCRIPT STRUCTURE
 1. Output one complete Python script.
 2. Include all imports required by the script. Use CadQuery 2.x and Python
@@ -75,8 +176,9 @@ IMPLEMENTATION RULES
    - Cuts: ensure cutting solids pass through the intended body when
      through-cuts are needed.
    - Selectors: select broad stable directions before narrow edge cases.
-5. For bores and holes, align the sketch plane normal with the intended hole
-   axis.
+5. For bores and holes, use explicit cutter solids and align each cutter with
+   the intended hole axis. Do not use `.hole()`, `.cboreHole()`, or
+   `.cskHole()`.
 6. For assemblies, use explicit cq.Assembly names and loc= placements. Apply
    transforms in the geometry plan order.
 7. Return the correct type:
@@ -138,6 +240,6 @@ COMMON PITFALLS
 - **Fillet failures**: Apply fillets from largest to smallest radius. **Do not wrap fillets in `try/except` to silently shrink the radius.** A fillet failure means the geometry or the radius is wrong; find the root cause (too-large radius, wall thinner than radius, adjacent faces that the fillet would degenerate) and fix that.
 - **Zero-thickness geometry**: Ensure boolean operations don't create infinitely thin walls. Add a small epsilon (0.01mm) when cutting bodies that are meant to pass just through a surface.
 - **Coordinate system**: CadQuery centers geometry at origin by default. Use `centered=(True, True, False)` on `.box()` to place the bottom at Z=0 so `.faces("<Z")` is always the print bed.
-- **Hole direction**: `.hole()` cuts through the entire part by default. Use `.cboreHole()` or `.cskHole()` for counterbore/countersink.
+- **Hole, bore, and counterbore direction**: Do not use `.hole()`, `.cboreHole()`, or `.cskHole()`. They hide axis and depth behind the active workplane. Model holes, bores, counterbores, and countersinks as explicit cutter solids that pass fully through the intended material, then subtract them with `.cut()`.
 - **Taper direction**: In `.extrude(taper=angle)`, a **positive** taper angle narrows the shape (draft inward), **negative** flares it outward. This is opposite to what many people expect.
 - **Loft is fragile**: `.loft()` fails on many cross-section combinations. Prefer `.extrude(taper=angle)` when transitioning between a shape and a scaled version of itself. Only use `.loft()` when you need to transition between genuinely different profiles (e.g., circle to rectangle).

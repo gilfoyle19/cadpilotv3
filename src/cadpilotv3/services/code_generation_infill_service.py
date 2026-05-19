@@ -32,6 +32,9 @@ class CodePatchApplicationError(ValueError):
     """Raised when a repair patch cannot be applied without corrupting the script."""
 
 
+DISALLOWED_IMPLICIT_HOLE_METHODS = frozenset({"hole", "cboreHole", "cskHole"})
+
+
 CodeGenerationStreamEventType = Literal[
     "code_generation_start",
     "code_chunk",
@@ -479,9 +482,11 @@ class CodeGenerationInfillService:
                 "Generated script must not use global statements; use constants directly"
             )
 
-        if any(self._is_disallowed_hole_call(node) for node in ast.walk(tree)):
+        if any(self._is_disallowed_implicit_hole_call(node) for node in ast.walk(tree)):
             raise CodeGenerationOutputError(
-                "Generated script must avoid Workplane.hole(); use explicit cutter solids"
+                "Generated script must avoid Workplane.hole(), "
+                "Workplane.cboreHole(), and Workplane.cskHole(); "
+                "use explicit cutter solids and .cut()"
             )
 
         if any(self._is_disallowed_volume_reasonable_key(node) for node in ast.walk(tree)):
@@ -493,11 +498,11 @@ class CodeGenerationInfillService:
         if not any(self._is_main_guard(node) for node in ast.walk(tree)):
             raise CodeGenerationOutputError("Generated script must include a __main__ export block")
 
-    def _is_disallowed_hole_call(self, node: ast.AST) -> bool:
+    def _is_disallowed_implicit_hole_call(self, node: ast.AST) -> bool:
         return (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "hole"
+            and node.func.attr in DISALLOWED_IMPLICIT_HOLE_METHODS
         )
 
     def _is_main_guard(self, node: ast.AST) -> bool:

@@ -149,3 +149,78 @@ cq.Assembly()
 
     assert ".edges(selector).fillet(radius)" in selected
     assert "cq.Assembly()" not in selected
+
+
+def test_repair_cheatsheet_retrieval_quarantines_forbidden_hole_helpers() -> None:
+    agent = object.__new__(RepairAgent)
+    cheatsheet = """
+cadquery_cheatsheet:
+"All dimensions are in mm"
+
+**Rule**: Use when user wants to drill simple holes.
+**Method**:
+```python
+.hole(diameter[, depth=None])
+```
+
+**Rule**: Use when user wants to create a counterbored hole.
+**Method**:
+```python
+.cboreHole(diameter, cboreDiameter[, depth=None])
+```
+
+**Rule**: Use when user wants to create a countersunk hole.
+**Method**:
+```python
+.cskHole(diameter, cskDiameter[, depth=None])
+```
+
+**Rule**: Canonical explicit cutter patterns for repairing holes.
+**Method**:
+```python
+def cut_through_hole_z(body, x, y, bottom_z, top_z, diameter):
+    depth = (top_z - bottom_z) + 0.4
+    cutter = cq.Workplane("XY").center(x, y).cylinder(depth, diameter / 2)
+    return body.cut(cutter)
+
+cutter = cq.Workplane("XY").cylinder(cut_depth, hole_radius)
+body = body.cut(cutter)
+```
+"""
+
+    selected = agent._select_relevant_cheatsheet(
+        cheatsheet=cheatsheet,
+        script="part = part.faces('>Z').workplane().hole(4)",
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[
+                SimpleNamespace(
+                    name="mounting_plate",
+                    modeling_strategy="primitive_csg",
+                    geometric_role="plate with through holes",
+                    key_features=[
+                        SimpleNamespace(
+                            feature="m4_clearance_holes",
+                            description="four through holes",
+                        )
+                    ],
+                )
+            ],
+        ),
+        parameters=SimpleNamespace(parameters={"M4_CLEAR_D": object()}),
+        validation=ValidationReport(
+            status="runtime_error",
+            error_class="api_misuse",
+            error_message="Workplane.hole is disallowed",
+            error_summary="Use explicit cutter solids for holes.",
+            geometry_valid=False,
+            repair_needed=True,
+        ),
+        max_blocks=6,
+    )
+
+    assert "Canonical explicit cutter patterns" in selected
+    assert "def cut_through_hole_z" in selected
+    assert ".hole(" not in selected
+    assert ".cboreHole(" not in selected
+    assert ".cskHole(" not in selected

@@ -901,6 +901,96 @@ Used to create 3D objects like box, cylinder, sphere etc.
 
 Used to perform 3D operations on 2D Workplane
 
+**Rule**: Canonical explicit cutter patterns for holes, bores, counterbores, and countersinks.
+
+**Method**:
+```python
+CUT_EPS = 0.2
+
+
+def make_z_cylindrical_cutter(x, y, z_center, diameter, depth):
+    return (
+        cq.Workplane("XY")
+        .center(x, y)
+        .cylinder(depth, diameter / 2, centered=(True, True, True))
+        .translate((0, 0, z_center))
+    )
+
+
+def cut_through_hole_z(body, x, y, bottom_z, top_z, diameter):
+    depth = (top_z - bottom_z) + 2 * CUT_EPS
+    z_center = (top_z + bottom_z) / 2
+    cutter = make_z_cylindrical_cutter(x, y, z_center, diameter, depth)
+    return body.cut(cutter)
+
+
+def cut_counterbore_z(
+    body,
+    x,
+    y,
+    top_z,
+    through_diameter,
+    counterbore_diameter,
+    counterbore_depth,
+    total_depth,
+):
+    body = cut_through_hole_z(
+        body, x, y, top_z - total_depth, top_z, through_diameter
+    )
+    cbore_center_z = top_z - counterbore_depth / 2 + CUT_EPS / 2
+    cbore = make_z_cylindrical_cutter(
+        x, y, cbore_center_z, counterbore_diameter, counterbore_depth + CUT_EPS
+    )
+    return body.cut(cbore)
+
+
+def make_top_countersink_cutter_z(
+    x,
+    y,
+    top_z,
+    through_diameter,
+    countersink_diameter,
+    countersink_depth,
+):
+    cone = cq.Solid.makeCone(
+        countersink_diameter / 2,
+        through_diameter / 2,
+        countersink_depth + CUT_EPS,
+        pnt=cq.Vector(x, y, top_z + CUT_EPS),
+        dir=cq.Vector(0, 0, -1),
+    )
+    return cq.Workplane("XY").add(cone)
+
+
+def cut_countersink_z(
+    body,
+    x,
+    y,
+    bottom_z,
+    top_z,
+    through_diameter,
+    countersink_diameter,
+    countersink_depth,
+):
+    body = cut_through_hole_z(body, x, y, bottom_z, top_z, through_diameter)
+    countersink = make_top_countersink_cutter_z(
+        x, y, top_z, through_diameter, countersink_diameter, countersink_depth
+    )
+    return body.cut(countersink)
+```
+
+**Allowed values**:
+- bottom_z/top_z: Actual material bounds along Z, not guessed global defaults.
+- diameter values: Full diameters; the helper divides by 2 internally.
+- CUT_EPS: Small overtravel in millimeters so cuts pass completely through faces.
+
+**Examples**:
+- **Prompt**: Cut a vertical M4 clearance hole through a 6 mm thick plate  
+  **Output**:
+  ```python
+  plate = cut_through_hole_z(plate, x=12, y=8, bottom_z=0, top_z=6, diameter=4.5)
+  ```
+
 **Rule**: Use when user wants to create a counterbored hole on the workplane.
 
 **Method**:
