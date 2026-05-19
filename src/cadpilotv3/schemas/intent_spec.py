@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -41,8 +46,6 @@ class IntentSpec(BaseModel):
         "constraints",
         "explicit_dimensions",
         "explicit_constraints",
-        "researched_dimensions",
-        "research_sources",
         "clarifications_needed",
         mode="before",
     )
@@ -53,3 +56,81 @@ class IntentSpec(BaseModel):
         if isinstance(value, str):
             return [value]
         return value
+
+    @field_validator("researched_dimensions", "research_sources", mode="before")
+    @classmethod
+    def _normalize_research_string_lists(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [cls._stringify_research_item(value)]
+        if isinstance(value, list):
+            normalized = [cls._stringify_research_item(item) for item in value]
+            return [item for item in normalized if item]
+        return [str(value)]
+
+    @staticmethod
+    def _stringify_research_item(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if not isinstance(value, dict):
+            return str(value)
+
+        item = _first_present(
+            value,
+            "item",
+            "name",
+            "dimension",
+            "feature",
+            "component",
+            "title",
+        )
+        measured_value = _first_present(
+            value,
+            "value",
+            "size",
+            "measurement",
+            "dimension_value",
+        )
+        unit = _first_present(value, "unit", "units")
+        source = _first_present(
+            value,
+            "source",
+            "source_note",
+            "source_url",
+            "url",
+        )
+
+        parts: list[str] = []
+        if item is not None and measured_value is not None:
+            measurement = str(measured_value)
+            if unit is not None and str(unit) not in measurement:
+                measurement = f"{measurement} {unit}"
+            parts.append(f"{item}: {measurement}")
+        elif item is not None:
+            parts.append(str(item))
+        elif measured_value is not None:
+            measurement = str(measured_value)
+            if unit is not None and str(unit) not in measurement:
+                measurement = f"{measurement} {unit}"
+            parts.append(measurement)
+
+        if source is not None:
+            parts.append(f"source {source}")
+
+        if parts:
+            return ", ".join(parts)
+
+        return json.dumps(value, sort_keys=True)
+
+
+def _first_present(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return None

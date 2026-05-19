@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from cadpilotv3.agents.intent_spec_agent import IntentSpecAgent
+from cadpilotv3.schemas.intent_spec import IntentSpec
 from cadpilotv3.services.web_research_service import WebResearchContext, WebResearchService
 
 
@@ -89,3 +90,46 @@ def test_web_research_trigger_detects_product_interfaces() -> None:
     assert not service.needs_research(
         "Make a phone stand without web research; use placeholder dimensions."
     )
+
+
+def test_intent_spec_normalizes_structured_researched_dimensions() -> None:
+    spec = IntentSpec.model_validate(
+        {
+            "component": "machine_camera_mount",
+            "component_type": "assembly",
+            "dof_count": 0,
+            "dof_config": None,
+            "joint_types": None,
+            "parts": ["rear_plate", "front_plate"],
+            "output_format": "STEP",
+            "units": "mm",
+            "approximate_scale": "small",
+            "style": "minimal_printable",
+            "manufacturing_process": "FDM",
+            "constraints": ["min_wall_2mm"],
+            "explicit_dimensions": [],
+            "explicit_constraints": [],
+            "researched_dimensions": [
+                {
+                    "item": "m6 clearance hole",
+                    "value": 6.6,
+                    "unit": "mm",
+                    "source_note": "standard normal clearance",
+                }
+            ],
+            "research_sources": [
+                {
+                    "title": "clearance hole table",
+                    "url": "https://example.com/clearance-holes",
+                }
+            ],
+            "clarifications_needed": [],
+        }
+    )
+
+    assert spec.researched_dimensions == [
+        "m6 clearance hole: 6.6 mm, source standard normal clearance"
+    ]
+    assert spec.research_sources == [
+        "clearance hole table, source https://example.com/clearance-holes"
+    ]

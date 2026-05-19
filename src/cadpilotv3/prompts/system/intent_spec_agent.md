@@ -41,7 +41,9 @@ Before outputting JSON, reason privately through the following checks. Do not re
      or explicit_constraints.
    - If a Web research context section is provided, copy only mechanically
      relevant real-world dimensions into researched_dimensions, preserving the
-     associated item, value, units, and source note.
+     associated item, value, units, and source note as plain strings.
+   - researched_dimensions must be an array of strings, not objects. Example:
+     "iphone 15 body: 147.6 mm x 71.6 mm x 7.8 mm, source Apple technical specifications".
    - Keep user-provided numeric facts in explicit_dimensions or
      explicit_constraints; do not mix researched facts into those fields.
    - Never replace explicit dimensions with approximate_scale alone.
@@ -71,8 +73,8 @@ OUTPUT SCHEMA - produce exactly this JSON structure, nothing else
   "constraints":            array,         // mechanical constraints, see CONSTRAINT RULES
   "explicit_dimensions":    array,         // exact numeric dimensions from the prompt as plain strings
   "explicit_constraints":   array,         // exact numeric placement/fit constraints from the prompt
-  "researched_dimensions":  array,         // sourced real-world dimensions from Web research context
-  "research_sources":       array,         // source URLs used for researched_dimensions
+  "researched_dimensions":  array,         // sourced real-world dimensions as plain strings, not objects
+  "research_sources":       array,         // source URLs as plain strings
   "clarifications_needed":  array          // fields that are genuinely ambiguous
 }
 
@@ -124,6 +126,8 @@ OUTPUT RULES
 - researched_dimensions and research_sources must be empty arrays when no Web
   research context was used or when the research produced no reliable
   mechanically relevant dimensions.
+- researched_dimensions and research_sources must contain strings only. Do not
+  output objects such as {"item": "...", "value": "...", "source": "..."}.
 - If the request is completely unintelligible, output:
   { "error": "unintelligible_request", "raw_input": "<user input>",
     "clarifications_needed": ["complete description of desired component"] }
