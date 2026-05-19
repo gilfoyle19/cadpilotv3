@@ -247,7 +247,11 @@ class CodeGenerationInfillAgent:
                     "The script must define build_part() or build_assembly(), "
                     "validate_geometry(...), export_all(...), and an "
                     "if __name__ == '__main__': export block that assigns the "
-                    "built object to global model or assembly."
+                    "built object to global model or assembly, calls "
+                    "validate_geometry(model_or_assembly), then calls "
+                    "export_all(model_or_assembly, './output'). Define exactly "
+                    "one public entrypoint. Do not assign model, assembly, "
+                    "result, or final_geometry outside the main block."
                 ),
                 (
                     "validate_geometry may check bounding boxes, part counts, "
@@ -300,7 +304,19 @@ class CodeGenerationInfillAgent:
         if not selected:
             selected = sections[:max_examples]
 
-        return "\n\n".join(["## Selected Codegen Few-Shots", *selected])
+        return "\n\n".join(
+            [
+                "## Selected Codegen Few-Shots",
+                (
+                    "Skeleton contract overrides older examples: final output "
+                    "must start with `import cadquery as cq`, define exactly "
+                    "one of build_part() or build_assembly(), define "
+                    "validate_geometry(...) and export_all(...), and the "
+                    "__main__ block must build, validate, then call export_all."
+                ),
+                *selected,
+            ]
+        )
 
     def _split_example_sections(self, few_shot_prompt: str) -> list[str]:
         matches = list(re.finditer(r"(?m)^###\s+", few_shot_prompt))

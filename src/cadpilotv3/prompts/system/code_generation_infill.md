@@ -146,8 +146,8 @@ def cut_countersink_z(
 
 SCRIPT STRUCTURE
 1. Output one complete Python script.
-2. Include all imports required by the script. Use CadQuery 2.x and Python
-   standard-library imports only.
+2. The first line must be exactly `import cadquery as cq`. Put any other imports
+   on later lines. Use CadQuery 2.x and Python standard-library imports only.
 3. Emit every parameter from the schema as a Python constant.
 4. Define any helper functions before use.
 5. For a single-part artifact, define build_part() -> cq.Workplane as the
@@ -155,14 +155,36 @@ SCRIPT STRUCTURE
    make_cutter(), but the final part must be returned by build_part().
 6. For an assembly artifact, define build_assembly() -> cq.Assembly as the
    public entry point. Helper part factories may use descriptive names.
+   Define exactly one public entry point: build_part() or build_assembly(), not
+   both.
 7. Include validate_geometry(...) -> dict with cheap robust checks.
-8. Include export_all(...) -> list[str] when the generated main block needs
-   output-directory based export, or directly save/export in the main block when
-   matching the examples.
+8. Include export_all(...) -> list[str]. Put all STEP/STL export logic inside
+   export_all; do not call exporters.export(...) or assembly.save(...) directly
+   in the main block.
 9. Include an if __name__ == "__main__": block that builds the model or
    assembly by calling build_part() for single parts or build_assembly() for
-   assemblies, assigns it to a top-level variable named model or assembly, then
-   exports the requested format.
+   assemblies, assigns it to a top-level variable named model or assembly,
+   calls validate_geometry(...), then calls export_all(...).
+
+REQUIRED MAIN BLOCK SHAPE
+For a single part:
+```python
+if __name__ == "__main__":
+    model = build_part()
+    validate_geometry(model)
+    export_all(model, "./output")
+```
+
+For an assembly:
+```python
+if __name__ == "__main__":
+    assembly = build_assembly()
+    validate_geometry(assembly)
+    export_all(assembly, "./output")
+```
+
+Do not assign model, assembly, result, or final geometry at module scope outside
+this main block.
 
 IMPLEMENTATION RULES
 1. Follow the geometry plan's modeling strategy exactly.

@@ -33,6 +33,13 @@ class CodePatchApplicationError(ValueError):
 
 
 DISALLOWED_IMPLICIT_HOLE_METHODS = frozenset({"hole", "cboreHole", "cskHole"})
+CADQUERY_IMPORT_LINE = "import cadquery as cq"
+PUBLIC_ENTRYPOINT_RESULT_NAMES = {
+    "build_part": "model",
+    "build_assembly": "assembly",
+}
+RESULT_OBJECT_NAMES = frozenset({"model", "assembly", "result", "final_geometry"})
+REQUIRED_SUPPORT_FUNCTIONS = frozenset({"validate_geometry", "export_all"})
 
 
 CodeGenerationStreamEventType = Literal[
@@ -393,8 +400,13 @@ class CodeGenerationInfillService:
         )
         raise error
 
-    def _should_use_compact_retry(self, error: CodeGenerationOutputError) -> bool:
-        return "empty script" in str(error).lower()
+    def _should_use_compact_retry(self, _error: CodeGenerationOutputError) -> bool:
+        # Every CodeGenerationOutputError raised here is a pre-execution output
+        # contract failure: empty text, non-Python/prose, syntax error, forbidden
+        # API usage, missing entrypoints, or an invalid script skeleton. The next
+        # attempt should therefore use the compact corrective prompt instead of
+        # re-sending the full context that allowed the output to drift.
+        return True
 
     def _write_failed_attempt(
         self,
@@ -449,6 +461,12 @@ class CodeGenerationInfillService:
         if not implemented_script.strip():
             raise CodeGenerationOutputError("Code generation returned an empty script")
 
+        script_lines = implemented_script.splitlines()
+        if not script_lines or script_lines[0] != CADQUERY_IMPORT_LINE:
+            raise CodeGenerationOutputError(
+                "Generated script must start with exactly: import cadquery as cq"
+            )
+
         if "cadquery" not in implemented_script:
             raise CodeGenerationOutputError(
                 "Code generation returned text that does not appear to import CadQuery"
@@ -467,15 +485,24 @@ class CodeGenerationInfillService:
             for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
+        entrypoint_names = [
+            name for name in PUBLIC_ENTRYPOINT_RESULT_NAMES if name in function_names
+        ]
 
-        if not ({"build_part", "build_assembly"} & function_names):
+        if not entrypoint_names:
             raise CodeGenerationOutputError(
                 "Generated script must define build_part() or build_assembly()"
             )
-        if "validate_geometry" not in function_names:
-            raise CodeGenerationOutputError("Generated script must define validate_geometry()")
-        if "export_all" not in function_names:
-            raise CodeGenerationOutputError("Generated script must define export_all()")
+        if len(entrypoint_names) > 1:
+            raise CodeGenerationOutputError(
+                "Generated script must define exactly one public entrypoint: "
+                "build_part() or build_assembly()"
+            )
+
+        missing_support_functions = REQUIRED_SUPPORT_FUNCTIONS - function_names
+        if missing_support_functions:
+            missing = ", ".join(sorted(f"{name}()" for name in missing_support_functions))
+            raise CodeGenerationOutputError(f"Generated script must define {missing}")
 
         if any(isinstance(node, ast.Global) for node in ast.walk(tree)):
             raise CodeGenerationOutputError(
@@ -495,8 +522,115 @@ class CodeGenerationInfillService:
                 "use positive-volume and bounding-box checks only"
             )
 
-        if not any(self._is_main_guard(node) for node in ast.walk(tree)):
+        main_guards = [node for node in tree.body if self._is_main_guard(node)]
+        if not main_guards:
             raise CodeGenerationOutputError("Generated script must include a __main__ export block")
+        if len(main_guards) > 1:
+            raise CodeGenerationOutputError(
+                "Generated script must include only one __main__ export block"
+            )
+
+        entrypoint_name = entrypoint_names[0]
+        self._validate_top_level_result_assignment(tree, main_guards[0])
+        self._validate_main_guard_skeleton(main_guards[0], entrypoint_name)
+
+    def _validate_top_level_result_assignment(
+        self,
+        tree: ast.Module,
+        main_guard: ast.If,
+    ) -> None:
+        for node in tree.body:
+            if node is main_guard:
+                continue
+            if self._assigns_to_result_name(node):
+                raise CodeGenerationOutputError(
+                    "Generated script must assign result geometry names "
+                    "(model, assembly, result, final_geometry) only inside "
+                    "the __main__ export block"
+                )
+
+    def _assigns_to_result_name(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Assign):
+            return any(
+                isinstance(target, ast.Name) and target.id in RESULT_OBJECT_NAMES
+                for target in node.targets
+            )
+        return (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in RESULT_OBJECT_NAMES
+        )
+
+    def _validate_main_guard_skeleton(
+        self,
+        main_guard: ast.If,
+        entrypoint_name: str,
+    ) -> None:
+        result_name = PUBLIC_ENTRYPOINT_RESULT_NAMES[entrypoint_name]
+
+        if not any(
+            self._is_result_assignment_from_entrypoint(stmt, result_name, entrypoint_name)
+            for stmt in main_guard.body
+        ):
+            raise CodeGenerationOutputError(
+                "Generated script __main__ block must assign "
+                f"{result_name} = {entrypoint_name}()"
+            )
+
+        if not self._main_guard_calls_function(main_guard, "validate_geometry", result_name):
+            raise CodeGenerationOutputError(
+                "Generated script __main__ block must call "
+                f"validate_geometry({result_name})"
+            )
+
+        if not self._main_guard_calls_function(main_guard, "export_all", result_name):
+            raise CodeGenerationOutputError(
+                "Generated script __main__ block must call "
+                f"export_all({result_name}, ...)"
+            )
+
+    def _is_result_assignment_from_entrypoint(
+        self,
+        node: ast.AST,
+        result_name: str,
+        entrypoint_name: str,
+    ) -> bool:
+        if isinstance(node, ast.Assign):
+            assigns_result = any(
+                isinstance(target, ast.Name) and target.id == result_name
+                for target in node.targets
+            )
+            return assigns_result and self._is_call_to_name(node.value, entrypoint_name)
+
+        return (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == result_name
+            and self._is_call_to_name(node.value, entrypoint_name)
+        )
+
+    def _is_call_to_name(self, node: ast.AST, function_name: str) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == function_name
+        )
+
+    def _main_guard_calls_function(
+        self,
+        main_guard: ast.If,
+        function_name: str,
+        result_name: str,
+    ) -> bool:
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == function_name
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == result_name
+            for node in ast.walk(main_guard)
+        )
 
     def _is_disallowed_implicit_hole_call(self, node: ast.AST) -> bool:
         return (

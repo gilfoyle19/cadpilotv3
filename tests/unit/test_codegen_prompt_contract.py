@@ -57,3 +57,20 @@ def test_prompts_include_canonical_explicit_cutter_patterns() -> None:
 
     assert "make_z_cylindrical_cutter" in repair_prompt
     assert "cq.Solid.makeCone" in repair_prompt
+
+
+def test_codegen_prompt_defines_strict_script_skeleton() -> None:
+    system_prompt = (
+        PROMPT_ROOT / "system" / "code_generation_infill.md"
+    ).read_text(encoding="utf-8")
+
+    assert "first line must be exactly `import cadquery as cq`" in system_prompt
+    assert "Define exactly one public entry point" in system_prompt
+    assert "REQUIRED MAIN BLOCK SHAPE" in system_prompt
+    assert "model = build_part()" in system_prompt
+    assert "assembly = build_assembly()" in system_prompt
+    assert "validate_geometry(model)" in system_prompt
+    assert "export_all(model, \"./output\")" in system_prompt
+    assert "validate_geometry(assembly)" in system_prompt
+    assert "export_all(assembly, \"./output\")" in system_prompt
+    assert "do not call exporters.export" in system_prompt

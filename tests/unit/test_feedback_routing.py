@@ -14,6 +14,25 @@ from cadpilotv3.services.code_generation_infill_service import (
 from cadpilotv3.shared import LLMTextResult, LLMTextStreamChunk
 
 
+def _valid_single_part_script() -> str:
+    return "\n".join(
+        [
+            "import cadquery as cq",
+            "def build_part():",
+            "    return cq.Workplane('XY').box(1, 1, 1)",
+            "def validate_geometry(model):",
+            "    return {}",
+            "def export_all(model, output_dir='.'):",
+            "    return []",
+            "if __name__ == '__main__':",
+            "    model = build_part()",
+            "    validate_geometry(model)",
+            "    export_all(model, '.')",
+            "",
+        ]
+    )
+
+
 def test_codegen_node_passes_critic_b_patch_instructions() -> None:
     captured = {}
 
@@ -153,6 +172,60 @@ def test_extract_generated_code_strips_bare_python_prefix() -> None:
     assert not code.startswith("python")
 
 
+def test_codegen_preflight_accepts_required_single_part_skeleton() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    service._validate_generated_code(_valid_single_part_script())
+
+
+def test_codegen_preflight_rejects_script_not_starting_with_cadquery_import() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = "from cadquery import exporters\n" + _valid_single_part_script()
+
+    with pytest.raises(CodeGenerationOutputError, match="start with exactly"):
+        service._validate_generated_code(script)
+
+
+def test_codegen_preflight_rejects_multiple_public_entrypoints() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "def validate_geometry(model):",
+        "def build_assembly():\n    return cq.Assembly()\ndef validate_geometry(model):",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="exactly one public entrypoint"):
+        service._validate_generated_code(script)
+
+
+@pytest.mark.parametrize(
+    ("main_body_line", "message"),
+    [
+        ("    validate_geometry(model)", "validate_geometry"),
+        ("    export_all(model, '.')", "export_all"),
+    ],
+)
+def test_codegen_preflight_rejects_incomplete_main_block(
+    main_body_line: str,
+    message: str,
+) -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(f"{main_body_line}\n", "")
+
+    with pytest.raises(CodeGenerationOutputError, match=message):
+        service._validate_generated_code(script)
+
+
+def test_codegen_preflight_rejects_top_level_result_assignment() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "def build_part():",
+        "model = cq.Workplane('XY').box(1, 1, 1)\ndef build_part():",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="only inside"):
+        service._validate_generated_code(script)
+
+
 @pytest.mark.parametrize(
     ("method_name", "arguments"),
     [
@@ -186,6 +259,8 @@ def test_codegen_preflight_rejects_implicit_hole_helpers(
                     "    return []",
                     "if __name__ == '__main__':",
                     "    model = build_part()",
+                    "    validate_geometry(model)",
+                    "    export_all(model, '.')",
                     "",
                 ]
             )
@@ -208,6 +283,8 @@ def test_codegen_preflight_rejects_volume_reasonable_heuristic() -> None:
                     "    return []",
                     "if __name__ == '__main__':",
                     "    model = build_part()",
+                    "    validate_geometry(model)",
+                    "    export_all(model, '.')",
                     "",
                 ]
             )
@@ -254,6 +331,8 @@ def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
                     "    return []",
                     "if __name__ == '__main__':",
                     "    model = build_part()",
+                    "    validate_geometry(model)",
+                    "    export_all(model, '.')",
                     "",
                 ]
             )
@@ -277,13 +356,79 @@ def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
     assert service.agent.calls[1]["compact_retry"] is True
 
 
+def test_execute_script_uses_compact_retry_after_structural_preflight_failure(
+    tmp_path,
+) -> None:
+    class FakeAgent:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return "\n".join(
+                    [
+                        "import cadquery as cq",
+                        "def build_part():",
+                        "    return cq.Workplane('XY').box(1, 1, 1)",
+                        "",
+                    ]
+                )
+            return _valid_single_part_script()
+
+    service = object.__new__(CodeGenerationInfillService)
+    service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
+    service.agent = FakeAgent()
+
+    script = service.execute_script(
+        spec=SimpleNamespace(component="test_part"),
+        geometry_plan=object(),
+        parameters=object(),
+    )
+
+    assert script == _valid_single_part_script()
+    assert len(service.agent.calls) == 2
+    assert service.agent.calls[0]["compact_retry"] is False
+    assert service.agent.calls[1]["generation_feedback"].startswith(
+        "Generated script must define"
+    )
+    assert service.agent.calls[1]["compact_retry"] is True
+
+
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "Generated script must start with exactly: import cadquery as cq",
+        "Generated script has a syntax error: invalid syntax",
+        "Generated script must define build_part() or build_assembly()",
+        "Generated script must define validate_geometry()",
+        "Generated script must include a __main__ export block",
+        "Generated script must avoid Workplane.hole(); use explicit cutter solids",
+        "Generated script must not include heuristic volume_reasonable checks",
+    ],
+)
+def test_codegen_uses_compact_retry_for_all_output_contract_failures(
+    error_message: str,
+) -> None:
+    service = object.__new__(CodeGenerationInfillService)
+
+    assert service._should_use_compact_retry(
+        CodeGenerationOutputError(error_message)
+    ) is True
+
+
 async def test_astream_script_yields_code_chunks_and_complete_event(tmp_path) -> None:
     valid_chunks = [
         "import cadquery as cq\n",
         "def build_part():\n    return cq.Workplane('XY').box(1, 1, 1)\n",
         "def validate_geometry(model):\n    return {}\n",
         "def export_all(model, output_dir='.'): \n    return []\n",
-        "if __name__ == '__main__':\n    model = build_part()\n",
+        (
+            "if __name__ == '__main__':\n"
+            "    model = build_part()\n"
+            "    validate_geometry(model)\n"
+            "    export_all(model, '.')\n"
+        ),
     ]
 
     class FakeAgent:
@@ -366,6 +511,8 @@ async def test_astream_script_retries_after_empty_streamed_generation(tmp_path) 
                     "    return []",
                     "if __name__ == '__main__':",
                     "    model = build_part()",
+                    "    validate_geometry(model)",
+                    "    export_all(model, '.')",
                     "",
                 ]
             )
@@ -428,6 +575,8 @@ def test_execute_script_persists_raw_failed_codegen_response(tmp_path) -> None:
                     "    return []",
                     "if __name__ == '__main__':",
                     "    model = build_part()",
+                    "    validate_geometry(model)",
+                    "    export_all(model, '.')",
                     "",
                 ]
             )
