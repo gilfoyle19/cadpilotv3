@@ -125,6 +125,63 @@ def test_critic_b_node_passes_geometry_plan_and_parameters() -> None:
     assert captured["parameters"] is parameters
 
 
+def test_repair_node_passes_and_records_repair_history() -> None:
+    captured = {}
+
+    class FakeRepairService:
+        def execute(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                action="replan",
+                root_cause="The selector failure repeated after a patch.",
+                fix_description=None,
+                affected_function=None,
+                cannot_patch_reason="Same error class already failed.",
+                replan_instructions="Use explicit construction references.",
+            )
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.repair_service = FakeRepairService()
+
+    state = {
+        "script": "import cadquery as cq\n",
+        "geometry_plan": object(),
+        "parameters": object(),
+        "validation": SimpleNamespace(
+            error_class="empty_selection",
+            error_summary="Selector did not find expected faces.",
+        ),
+        "repair_count": 1,
+        "repair_history": [
+            {
+                "attempt_index": 0,
+                "validation_error_class": "empty_selection",
+                "action": "patch",
+            }
+        ],
+    }
+
+    result = nodes.repair_agent(state)
+
+    assert captured["repair_history"] == [
+        {
+            "attempt_index": 0,
+            "validation_error_class": "empty_selection",
+            "action": "patch",
+        }
+    ]
+    assert result["repair_count"] == 2
+    assert result["repair_history"][-1] == {
+        "attempt_index": 1,
+        "validation_error_class": "empty_selection",
+        "validation_error_summary": "Selector did not find expected faces.",
+        "action": "replan",
+        "root_cause": "The selector failure repeated after a patch.",
+        "cannot_patch_reason": "Same error class already failed.",
+        "replan_instructions": "Use explicit construction references.",
+    }
+
+
 def test_codegen_output_guard_rejects_empty_script() -> None:
     service = object.__new__(CodeGenerationInfillService)
 

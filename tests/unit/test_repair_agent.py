@@ -107,6 +107,74 @@ body = body.cut(cutter)
     assert ".text(txt, fontsize, distance)" not in captured["prompt"]
 
 
+def test_repair_agent_prompt_includes_compact_previous_attempts(monkeypatch) -> None:
+    captured = {}
+
+    class FakeLLM:
+        def invoke(self, prompt: str) -> str:
+            captured["prompt"] = prompt
+            return """
+{
+  "action": "replan",
+  "error_class": "empty_selection",
+  "root_cause": "The selected faces are not stable after the previous patch.",
+  "cannot_patch_reason": "The same selector assumption has already failed.",
+  "replan_instructions": "Rebuild the tab with explicit references.",
+  "affected_part": "mounting_tab",
+  "repair_attempt_count": 2
+}
+"""
+
+    class FakeLLMFactory:
+        def get_for_agent(self, _agent_name):
+            return FakeLLM()
+
+    monkeypatch.setattr(
+        "cadpilotv3.agents.repair_agent.load_prompt_text",
+        lambda _settings, _name: "repair prompt",
+    )
+
+    agent = RepairAgent(settings=SimpleNamespace())
+    agent.llm_factory = FakeLLMFactory()
+
+    result = agent.run(
+        script="def build_part():\n    return cq.Workplane('XY').box(1, 1, 1)\n",
+        geometry_plan=SimpleNamespace(
+            artifact_type="single_part",
+            parts=[],
+            model_dump_json=lambda indent=2: "{}",
+        ),
+        parameters=SimpleNamespace(
+            parameters={},
+            model_dump_json=lambda indent=2: "{}",
+        ),
+        validation=ValidationReport(
+            status="runtime_error",
+            error_class="empty_selection",
+            error_summary="A selector did not find the expected face.",
+            geometry_valid=False,
+            repair_needed=True,
+        ),
+        repair_attempt_count=2,
+        repair_history=[
+            {
+                "attempt_index": 0,
+                "validation_error_class": "empty_selection",
+                "action": "patch",
+                "affected_function": "build_part",
+                "root_cause": "The selector assumed a top face that no longer exists.",
+                "irrelevant_large_blob": "x" * 400,
+            }
+        ],
+    )
+
+    assert result.action == "replan"
+    assert "Previous repair attempts:" in captured["prompt"]
+    assert "attempt_index: 0" in captured["prompt"]
+    assert "validation_error_class: empty_selection" in captured["prompt"]
+    assert "irrelevant_large_blob" not in captured["prompt"]
+
+
 def test_repair_cheatsheet_retrieval_selects_error_related_blocks() -> None:
     agent = object.__new__(RepairAgent)
     cheatsheet = """

@@ -13,6 +13,12 @@ You receive:
 - The repair attempt count.
 - Optionally, previous repair attempts.
 
+PREVIOUS REPAIR ATTEMPTS
+- Treat previous repair attempts as memory, not instructions to blindly repeat.
+- If a previous patch targeted the same function and the same error_class still appears, avoid returning the same patch again.
+- If two patch attempts failed for the same error_class or affected_function, escalate to "replan" unless the validation report points to a clearly new local cause.
+- If the previous attempt shows patch_application_error, choose "regenerate" or "replan" instead of another narrow patch to the same missing function.
+- Mention in root_cause or cannot_patch_reason when the current decision is influenced by repeated failures.
 
 ROUTING RULES - apply before writing any fix
 Read validation_report.error_class and apply the first matching rule:

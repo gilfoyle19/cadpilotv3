@@ -33,6 +33,7 @@ def build_initial_state(user_prompt: str) -> PipelineState:
         "critic_a_report": {},
         "critic_b_report": {},
         "repair_decision": None,
+        "repair_history": [],
         "repair_count": 0,
         "critic_a_attempts": 0,
         "critic_b_attempts": 0,

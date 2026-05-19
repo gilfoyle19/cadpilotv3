@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from cadpilotv3.agents.cheatsheet_safety import filter_forbidden_cheatsheet_blocks
 from cadpilotv3.config.settings import AppSettings
@@ -24,6 +25,7 @@ class RepairAgent:
         parameters: ParameterSchema,
         validation: ValidationReport,
         repair_attempt_count: int,
+        repair_history: list[dict[str, Any]] | None = None,
     ) -> RepairOutput:
         llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
         prompt = self._build_prompt(
@@ -32,6 +34,7 @@ class RepairAgent:
             parameters=parameters,
             validation=validation,
             repair_attempt_count=repair_attempt_count,
+            repair_history=repair_history,
         )
 
         return invoke_pydantic(
@@ -49,6 +52,7 @@ class RepairAgent:
         parameters: ParameterSchema,
         validation: ValidationReport,
         repair_attempt_count: int,
+        repair_history: list[dict[str, Any]] | None = None,
     ) -> RepairOutput:
         llm = self.llm_factory.get_for_agent(AgentName.REPAIR)
         prompt = self._build_prompt(
@@ -57,6 +61,7 @@ class RepairAgent:
             parameters=parameters,
             validation=validation,
             repair_attempt_count=repair_attempt_count,
+            repair_history=repair_history,
         )
 
         return await ainvoke_pydantic(
@@ -75,6 +80,7 @@ class RepairAgent:
         parameters: ParameterSchema,
         validation: ValidationReport,
         repair_attempt_count: int,
+        repair_history: list[dict[str, Any]] | None = None,
     ) -> str:
         system_prompt = load_prompt_text(self.settings, "repair_agent.md")
         few_shot_prompt = load_prompt_text(
@@ -105,9 +111,48 @@ class RepairAgent:
                 "Validation report:",
                 validation.model_dump_json(indent=2),
                 f"Repair attempt count: {repair_attempt_count}",
+                "Previous repair attempts:",
+                self._format_repair_history(repair_history),
             ]
         )
         return prompt
+
+    def _format_repair_history(self, repair_history: list[dict[str, Any]] | None) -> str:
+        if not repair_history:
+            return "[]"
+
+        compact_entries: list[dict[str, Any]] = []
+        for entry in repair_history[-5:]:
+            compact_entries.append(
+                {
+                    key: value
+                    for key, value in entry.items()
+                    if _has_repair_history_value(value)
+                    and key
+                    in {
+                        "attempt_index",
+                        "validation_error_class",
+                        "validation_error_summary",
+                        "action",
+                        "root_cause",
+                        "fix_description",
+                        "affected_function",
+                        "cannot_patch_reason",
+                        "replan_instructions",
+                        "patch_application_error",
+                    }
+                }
+            )
+
+        lines = []
+        for entry in compact_entries:
+            lines.append(
+                "- "
+                + "; ".join(
+                    f"{key}: {str(value).strip()[:240]}" for key, value in entry.items()
+                )
+            )
+        return "\n".join(lines)
 
     def _select_relevant_cheatsheet(
         self,
@@ -306,3 +351,7 @@ class RepairAgent:
         if score > 0 and "**method**" in block_l:
             score += 1
         return score
+
+
+def _has_repair_history_value(value: Any) -> bool:
+    return value is not None and value != "" and value != []

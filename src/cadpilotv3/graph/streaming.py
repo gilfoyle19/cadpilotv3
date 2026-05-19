@@ -280,6 +280,7 @@ def _summarize_state(state: Mapping[str, Any]) -> dict[str, Any]:
         "critic_a_routing": getattr(critic_a_report, "routing", None),
         "critic_b_routing": getattr(critic_b_report, "routing", None),
         "repair_count": state.get("repair_count"),
+        "repair_history_count": len(state.get("repair_history") or []),
         "critic_a_attempts": state.get("critic_a_attempts"),
         "critic_b_attempts": state.get("critic_b_attempts"),
         "export_count": len(state.get("export_files") or []),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from cadpilotv3.agents.repair_agent import RepairAgent
 from cadpilotv3.config.settings import AppSettings
@@ -23,6 +24,7 @@ class RepairService:
         parameters: ParameterSchema,
         validation: ValidationReport,
         repair_attempt_count: int,
+        repair_history: list[dict[str, Any]] | None = None,
     ) -> RepairOutput:
         logger.info(
             "Running repair_agent",
@@ -38,6 +40,7 @@ class RepairService:
             parameters=parameters,
             validation=validation,
             repair_attempt_count=repair_attempt_count,
+            repair_history=repair_history,
         )
         self._log_decision_completed(decision)
 
@@ -50,6 +53,7 @@ class RepairService:
         parameters: ParameterSchema,
         validation: ValidationReport,
         repair_attempt_count: int,
+        repair_history: list[dict[str, Any]] | None = None,
     ) -> RepairOutput:
         logger.info(
             "Running repair_agent",
@@ -65,6 +69,7 @@ class RepairService:
             parameters=parameters,
             validation=validation,
             repair_attempt_count=repair_attempt_count,
+            repair_history=repair_history,
         )
         self._log_decision_completed(decision)
 

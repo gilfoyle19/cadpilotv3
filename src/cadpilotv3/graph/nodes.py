@@ -279,10 +279,12 @@ class PipelineNodes:
             parameters=state["parameters"],
             validation=state["validation"],
             repair_attempt_count=state["repair_count"],
+            repair_history=state.get("repair_history", []),
         )
 
         state["repair_decision"] = decision
 
+        patch_application_error = None
         if decision.action == "patch":
             try:
                 state["script"] = self.code_generation_infill_service.apply_patch(
@@ -300,7 +302,13 @@ class PipelineNodes:
                     ),
                     confidence="medium",
                 )
+                patch_application_error = str(exc)
 
+        self._append_repair_history(
+            state,
+            decision=state["repair_decision"],
+            patch_application_error=patch_application_error,
+        )
         state["repair_count"] += 1
 
         return state
@@ -312,10 +320,12 @@ class PipelineNodes:
             parameters=state["parameters"],
             validation=state["validation"],
             repair_attempt_count=state["repair_count"],
+            repair_history=state.get("repair_history", []),
         )
 
         state["repair_decision"] = decision
 
+        patch_application_error = None
         if decision.action == "patch":
             try:
                 state["script"] = self.code_generation_infill_service.apply_patch(
@@ -333,10 +343,42 @@ class PipelineNodes:
                     ),
                     confidence="medium",
                 )
+                patch_application_error = str(exc)
 
+        self._append_repair_history(
+            state,
+            decision=state["repair_decision"],
+            patch_application_error=patch_application_error,
+        )
         state["repair_count"] += 1
 
         return state
+
+    def _append_repair_history(
+        self,
+        state: PipelineState,
+        *,
+        decision: RepairOutput,
+        patch_application_error: str | None = None,
+    ) -> None:
+        validation = state["validation"]
+        history = list(state.get("repair_history", []) or [])
+        entry = {
+            "attempt_index": state["repair_count"],
+            "validation_error_class": getattr(validation, "error_class", None),
+            "validation_error_summary": getattr(validation, "error_summary", None),
+            "action": decision.action,
+            "root_cause": decision.root_cause,
+            "fix_description": decision.fix_description,
+            "affected_function": decision.affected_function,
+            "cannot_patch_reason": decision.cannot_patch_reason,
+            "replan_instructions": decision.replan_instructions,
+            "patch_application_error": patch_application_error,
+        }
+        state["repair_history"] = [
+            {key: value for key, value in item.items() if _has_repair_history_value(value)}
+            for item in [*history, entry]
+        ]
 
     def critic_checkpoint_b(self, state: PipelineState) -> PipelineState:
         state["critic_b_report"] = self.critic_checkpoint_b_service.execute(
@@ -412,3 +454,7 @@ def _get_optional_stream_writer() -> Callable[[Any], None] | None:
         return get_stream_writer()
     except RuntimeError:
         return None
+
+
+def _has_repair_history_value(value: Any) -> bool:
+    return value is not None and value != "" and value != []
