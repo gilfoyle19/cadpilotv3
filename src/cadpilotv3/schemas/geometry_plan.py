@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
 from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class CoordinateConvention(BaseModel):
@@ -55,6 +56,65 @@ class PlannedPart(BaseModel):
     strategy_selection: StrategySelection
     key_features: list[KeyFeature] = Field(default_factory=list)
     body_type: str = "solid"
+
+
+class AssemblyAxisContract(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    x_axis: str
+    y_axis: str
+    z_axis: str
+    primary_separation_axis: str | None = None
+    description: str | None = None
+
+
+class FunctionalFace(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    name: str
+    normal_axis: str
+    role: str
+    mates_with: str | None = None
+
+
+class PartFrame(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    part: str
+    local_origin: str
+    world_center: str | None = None
+    approximate_bounding_box_mm: list[float] | None = None
+    functional_faces: list[FunctionalFace] = Field(default_factory=list)
+
+
+class AssemblyPlacementConstraint(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    name: str
+    constraint_type: str
+    parts: list[str] = Field(default_factory=list)
+    description: str
+
+
+class AlignmentGroup(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    name: str
+    axis: str
+    center_reference: str
+    members: list[str] = Field(default_factory=list)
+    tolerance_mm: float | None = None
+    description: str | None = None
 
 
 class TransformChain(BaseModel):
@@ -113,6 +173,13 @@ class GeometryPlan(BaseModel):
 
     parts: list[PlannedPart] = Field(default_factory=list)
     subassemblies: list[str] = Field(default_factory=list)
+    assembly_axes: AssemblyAxisContract | None = None
+    part_frames: list[PartFrame] = Field(default_factory=list)
+    assembly_placement_constraints: list[AssemblyPlacementConstraint] = Field(
+        default_factory=list
+    )
+    alignment_groups: list[AlignmentGroup] = Field(default_factory=list)
+    forbidden_layouts: list[str] = Field(default_factory=list)
     assembly_transform_chain: list[TransformChain] = Field(default_factory=list)
     joint_definitions: list[JointDefinition] = Field(default_factory=list)
     interfaces: list[InterfaceDefinition] = Field(default_factory=list)

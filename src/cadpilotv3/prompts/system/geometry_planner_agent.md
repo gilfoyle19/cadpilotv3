@@ -40,6 +40,14 @@ Reason privately and do not expose hidden chain-of-thought. Use the following au
    - Place each part from its local origin into world coordinates.
    - Define transform order explicitly.
    - For every mechanism, place parts in the zero configuration and specify the motion axis.
+   - For static assemblies, define a face-axis assembly contract before transforms:
+     global axes, primary separation axis, per-part frames, functional faces,
+     mating face normals, placement constraints, and alignment groups.
+   - Identify which faces touch, oppose, or remain parallel. Name the face
+     roles in mechanical language: rear mounting face, front camera face, spacer
+     contact face, lid underside, base top, clamp saddle face, etc.
+   - For coaxial stacks, define one alignment_group per axis. Include every
+     matching hole, spacer, screw, boss, or standoff that must share that axis.
 
 5. Joint definitions
    - Define revolute, prismatic, spherical, fixed, or compliant joints as applicable.
@@ -80,6 +88,14 @@ For component_type="assembly":
 - parts must contain only independently modeled physical bodies.
 - feature-like items such as holes, bosses, lips, standoffs, cutouts, ribs, and patterns belong under key_features of their owning physical body.
 - Never satisfy an assembly by unioning all bodies into one fused part.
+- assembly_axes, part_frames, assembly_placement_constraints,
+  alignment_groups, and forbidden_layouts are required for static assemblies
+  with multiple components.
+- Never rely on vague placement such as "between" or "aligned" without naming
+  the axis, centers, face normals, and member parts/features.
+- If the user says plates are parallel, stacked, nested, clamped, separated,
+  or fasteners pass through multiple parts, encode that as face-axis and
+  coaxial alignment contracts.
 
 
 OUTPUT SCHEMA
@@ -117,6 +133,55 @@ Output strictly as JSON. No preamble, no code, no markdown prose.
         { "feature": string, "description": string }
       ]
     }
+  ],
+
+  "assembly_axes": {
+    "x_axis": string,                 // e.g. "left-right across plate width"
+    "y_axis": string,                 // e.g. "rear-to-front separation axis"
+    "z_axis": string,                 // e.g. "vertical plate height"
+    "primary_separation_axis": string,// "X" | "Y" | "Z" or descriptive custom axis
+    "description": string
+  },
+
+  "part_frames": [
+    {
+      "part": string,
+      "local_origin": string,
+      "world_center": string,          // expression or plain-English coordinate
+      "approximate_bounding_box_mm": [number, number, number],
+      "functional_faces": [
+        {
+          "name": string,
+          "normal_axis": string,       // "+X" | "-X" | "+Y" | "-Y" | "+Z" | "-Z"
+          "role": string,
+          "mates_with": string|null
+        }
+      ]
+    }
+  ],
+
+  "assembly_placement_constraints": [
+    {
+      "name": string,
+      "constraint_type": string,       // "parallel_faces"|"touching_faces"|"offset"|"coaxial"|"centered"
+      "parts": [string],
+      "description": string
+    }
+  ],
+
+  "alignment_groups": [
+    {
+      "name": string,
+      "axis": string,                  // "X" | "Y" | "Z" or custom axis
+      "center_reference": string,      // e.g. "x=-18mm, z=0 on Y axis"
+      "members": [string],             // holes, spacers, screws, bosses sharing the axis
+      "tolerance_mm": number|null,
+      "description": string
+    }
+  ],
+
+  "forbidden_layouts": [
+    string                             // e.g. "do not place plates side-by-side on X"
   ],
 
   "assembly_transform_chain": [
@@ -160,4 +225,6 @@ ABSOLUTE PROHIBITIONS
 - Do not add parts that contradict the spec.
 - Do not define a joint without both connected parts.
 - Do not use vague transform descriptions such as "place appropriately"; transforms must be explicit enough to implement.
+- Do not omit face-axis assembly contracts for multi-part static assemblies.
+- Do not claim parts are aligned without an alignment_group naming the shared axis and members.
 - Do not use impossible geometry such as zero-thickness ribs, unsupported floating parts, or bores larger than hubs.

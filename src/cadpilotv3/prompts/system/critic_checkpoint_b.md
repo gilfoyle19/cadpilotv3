@@ -63,12 +63,18 @@ Use "replan" when geometry intent, coordinate logic, part decomposition, or mode
 
 SPATIAL FIDELITY CHECKS
 - Expected part count: fail or conditional-pass when child_metadata count contradicts the requested separate components.
+- Planned face-axis contract: compare geometry_plan.assembly_axes,
+  part_frames, assembly_placement_constraints, alignment_groups, and
+  forbidden_layouts against validation.geometry_report.child_metadata.
 - Relative placement: compare child center_mm values against the intended final assembled position, not just global bounding box.
 - Vertical vs horizontal orientation: stacked assemblies should show meaningful separation on Z; side-by-side assemblies should show separation on X/Y as planned.
 - Stacked parts accidentally side-by-side: if two components expected to nest or sit on top have large X/Y center offsets and little/no Z offset, route "replan".
 - Coaxial fasteners/spacers/posts: centers for screws, spacers, standoffs, and matching holes should share the relevant X/Y axes within plausible tolerance.
 - Plate/lid/base assemblies: lid or upper plate should usually be centered over the lower part with compatible X/Y bounding boxes and a Z center above it.
 - Clamp halves: upper and lower halves should share X/Y center around the bore and separate primarily on Z.
+- Camera/spacer assemblies: rear plate and front camera plate must be parallel;
+  spacer posts and screw representations must lie between the plates on the
+  declared separation axis and share the alignment_group center references.
 - Multi-part demos: do not pass a technically valid assembly if child_metadata shows the parts are floating far away, interpenetrating incorrectly, duplicated, or arranged in the wrong orientation.
 - If child_metadata is missing, note uncertainty and rely on top-level geometry_report; do not invent spatial evidence.
 

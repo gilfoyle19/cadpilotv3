@@ -203,6 +203,17 @@ IMPLEMENTATION RULES
    `.cskHole()`.
 6. For assemblies, use explicit cq.Assembly names and loc= placements. Apply
    transforms in the geometry plan order.
+   Treat assembly_axes, part_frames, assembly_placement_constraints,
+   alignment_groups, and forbidden_layouts as binding spatial contracts:
+   - Build each part in its declared local frame and place it at its declared
+     world center.
+   - Preserve functional face normals and mating face relationships.
+   - Keep parts parallel, stacked, nested, or separated along the declared
+     primary axis.
+   - Place holes, spacer posts, screws, bosses, and standoffs in the same
+     alignment_group on one coaxial line.
+   - Do not place parts side-by-side, floating, or along a different axis when
+     the contract says stacked or coaxial.
 7. Return the correct type:
    - build_part: cq.Workplane
    - build_assembly: cq.Assembly

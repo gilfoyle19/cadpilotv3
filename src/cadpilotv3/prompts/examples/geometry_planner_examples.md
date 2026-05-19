@@ -32,6 +32,345 @@ INPUT:
 }
 ```
 
+### Example 3 - Static Camera Mount Face-Axis Assembly Plan
+
+INPUT:
+```json
+{
+  "component": "machine_vision_camera_mount",
+  "component_type": "assembly",
+  "parts": [
+    "rear_mounting_plate",
+    "front_camera_plate",
+    "left_spacer_post",
+    "right_spacer_post",
+    "left_m4_screw",
+    "right_m4_screw"
+  ],
+  "units": "mm",
+  "manufacturing_process": "FDM",
+  "constraints": [
+    "exactly_six_separate_fixed_components",
+    "front_plate_parallel_to_rear_plate",
+    "spacers_between_plates",
+    "m4_screws_coaxial_with_spacers"
+  ]
+}
+```
+
+OUTPUT:
+```json
+{
+  "artifact_type": "assembly",
+  "coordinate_convention": {
+    "x_direction": "left-right across the plate width",
+    "y_direction": "rear-to-front separation axis normal to both plate faces",
+    "z_direction": "vertical plate height",
+    "world_origin": "center of the rear mounting plate mid-plane",
+    "zero_config": "static assembled camera mount with front plate parallel to rear plate"
+  },
+  "parts": [
+    {
+      "name": "rear_mounting_plate",
+      "geometric_role": "larger flat frame-side plate carrying M6 frame holes and two M4 spacer axes",
+      "local_origin": "center of rear plate mid-plane",
+      "modeling_strategy": "primitive_csg",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "primitive_csg",
+            "advantage": "flat box plate and explicit cylindrical through-cuts are robust",
+            "disadvantage": "requires careful axis naming for face-normal holes"
+          }
+        ],
+        "winner": "primitive_csg",
+        "rationale": "simple plate with through holes should be modeled from a box and explicit cutters"
+      },
+      "key_features": [
+        {
+          "feature": "four_m6_frame_holes",
+          "description": "four M6 clearance holes near the corners pass normal to the rear plate"
+        },
+        {
+          "feature": "two_m4_spacer_holes",
+          "description": "two centered M4 clearance holes share the spacer and screw axes"
+        }
+      ]
+    },
+    {
+      "name": "front_camera_plate",
+      "geometric_role": "smaller parallel camera plate with camera M3 pattern and matching M4 spacer holes",
+      "local_origin": "center of front plate mid-plane",
+      "modeling_strategy": "primitive_csg",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "primitive_csg",
+            "advantage": "rectangular plate and hole arrays are simple and stable",
+            "disadvantage": "visual quality depends on obeying the assembly transform contract"
+          }
+        ],
+        "winner": "primitive_csg",
+        "rationale": "the front plate is a flat prismatic part with explicit through-holes"
+      },
+      "key_features": [
+        {
+          "feature": "four_m3_camera_holes",
+          "description": "four M3 clearance holes on a rectangular industrial camera pattern"
+        },
+        {
+          "feature": "two_m4_spacer_holes",
+          "description": "two M4 clearance holes coaxial with the rear plate holes, spacers, and screws"
+        }
+      ]
+    },
+    {
+      "name": "left_spacer_post",
+      "geometric_role": "left cylindrical spacer keeping plates parallel at the required separation",
+      "local_origin": "center of spacer cylinder",
+      "modeling_strategy": "revolve",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "revolve",
+            "advantage": "axisymmetric cylinder is exact and simple",
+            "disadvantage": "must be placed on the declared Y axis"
+          }
+        ],
+        "winner": "revolve",
+        "rationale": "a spacer post is a simple cylinder aligned along the plate-normal axis"
+      },
+      "key_features": [
+        {
+          "feature": "m4_clearance_bore",
+          "description": "central bore coaxial with the left M4 screw representation"
+        }
+      ]
+    },
+    {
+      "name": "right_spacer_post",
+      "geometric_role": "right cylindrical spacer keeping plates parallel at the required separation",
+      "local_origin": "center of spacer cylinder",
+      "modeling_strategy": "revolve",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "revolve",
+            "advantage": "axisymmetric cylinder is exact and simple",
+            "disadvantage": "must mirror the left spacer on the declared Y axis"
+          }
+        ],
+        "winner": "revolve",
+        "rationale": "identical spacer body mirrored across X=0"
+      },
+      "key_features": [
+        {
+          "feature": "m4_clearance_bore",
+          "description": "central bore coaxial with the right M4 screw representation"
+        }
+      ]
+    },
+    {
+      "name": "left_m4_screw",
+      "geometric_role": "simple non-threaded screw representation passing through the left coaxial spacer stack",
+      "local_origin": "center of screw shaft",
+      "modeling_strategy": "primitive_csg",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "primitive_csg",
+            "advantage": "shaft cylinder plus simple head cylinder is robust",
+            "disadvantage": "not a real threaded fastener"
+          }
+        ],
+        "winner": "primitive_csg",
+        "rationale": "prompt asks for simple screw representation with no threads"
+      },
+      "key_features": [
+        {
+          "feature": "plain_cylindrical_shaft",
+          "description": "shaft axis is coaxial with the left spacer and M4 holes"
+        }
+      ]
+    },
+    {
+      "name": "right_m4_screw",
+      "geometric_role": "simple non-threaded screw representation passing through the right coaxial spacer stack",
+      "local_origin": "center of screw shaft",
+      "modeling_strategy": "primitive_csg",
+      "strategy_selection": {
+        "candidates": [
+          {
+            "strategy": "primitive_csg",
+            "advantage": "shaft cylinder plus simple head cylinder is robust",
+            "disadvantage": "not a real threaded fastener"
+          }
+        ],
+        "winner": "primitive_csg",
+        "rationale": "prompt asks for simple screw representation with no threads"
+      },
+      "key_features": [
+        {
+          "feature": "plain_cylindrical_shaft",
+          "description": "shaft axis is coaxial with the right spacer and M4 holes"
+        }
+      ]
+    }
+  ],
+  "assembly_axes": {
+    "x_axis": "left-right across plate width",
+    "y_axis": "rear-to-front plate separation and spacer/screw axis",
+    "z_axis": "vertical plate height",
+    "primary_separation_axis": "Y",
+    "description": "plates are parallel XZ slabs separated along Y; spacers and screws run along Y"
+  },
+  "part_frames": [
+    {
+      "part": "rear_mounting_plate",
+      "local_origin": "center of plate mid-plane",
+      "world_center": "[0, 0, 0]",
+      "approximate_bounding_box_mm": [70, 5, 50],
+      "functional_faces": [
+        {
+          "name": "front_spacer_face",
+          "normal_axis": "+Y",
+          "role": "face contacted by spacer rear ends",
+          "mates_with": "left_spacer_post.rear_face and right_spacer_post.rear_face"
+        }
+      ]
+    },
+    {
+      "part": "front_camera_plate",
+      "local_origin": "center of plate mid-plane",
+      "world_center": "[0, 30, 0]",
+      "approximate_bounding_box_mm": [50, 4, 40],
+      "functional_faces": [
+        {
+          "name": "rear_spacer_face",
+          "normal_axis": "-Y",
+          "role": "face contacted by spacer front ends",
+          "mates_with": "left_spacer_post.front_face and right_spacer_post.front_face"
+        }
+      ]
+    },
+    {
+      "part": "left_spacer_post",
+      "local_origin": "center of spacer cylinder",
+      "world_center": "[-18, 15, 0]",
+      "approximate_bounding_box_mm": [10, 25, 10],
+      "functional_faces": [
+        {
+          "name": "rear_face",
+          "normal_axis": "-Y",
+          "role": "contacts rear plate front face",
+          "mates_with": "rear_mounting_plate.front_spacer_face"
+        },
+        {
+          "name": "front_face",
+          "normal_axis": "+Y",
+          "role": "contacts front plate rear face",
+          "mates_with": "front_camera_plate.rear_spacer_face"
+        }
+      ]
+    },
+    {
+      "part": "right_spacer_post",
+      "local_origin": "center of spacer cylinder",
+      "world_center": "[18, 15, 0]",
+      "approximate_bounding_box_mm": [10, 25, 10],
+      "functional_faces": [
+        {
+          "name": "rear_face",
+          "normal_axis": "-Y",
+          "role": "contacts rear plate front face",
+          "mates_with": "rear_mounting_plate.front_spacer_face"
+        },
+        {
+          "name": "front_face",
+          "normal_axis": "+Y",
+          "role": "contacts front plate rear face",
+          "mates_with": "front_camera_plate.rear_spacer_face"
+        }
+      ]
+    }
+  ],
+  "assembly_placement_constraints": [
+    {
+      "name": "plates_parallel_and_centered",
+      "constraint_type": "parallel_faces",
+      "parts": ["rear_mounting_plate", "front_camera_plate"],
+      "description": "rear and front plates are parallel XZ plates with matching X/Z center and 25mm clear separation along Y"
+    }
+  ],
+  "alignment_groups": [
+    {
+      "name": "left_m4_spacer_stack",
+      "axis": "Y",
+      "center_reference": "x=-18mm, z=0mm",
+      "members": ["rear left M4 hole", "left_spacer_post", "front left M4 hole", "left_m4_screw"],
+      "tolerance_mm": 0.25,
+      "description": "all left stack members are coaxial along the plate separation axis"
+    },
+    {
+      "name": "right_m4_spacer_stack",
+      "axis": "Y",
+      "center_reference": "x=18mm, z=0mm",
+      "members": ["rear right M4 hole", "right_spacer_post", "front right M4 hole", "right_m4_screw"],
+      "tolerance_mm": 0.25,
+      "description": "all right stack members are coaxial along the plate separation axis"
+    }
+  ],
+  "forbidden_layouts": [
+    "do not stack plates vertically on Z",
+    "do not place plates side-by-side along X",
+    "do not orient spacers or M4 screws along X or Z",
+    "do not place screws beside the spacers"
+  ],
+  "assembly_transform_chain": [
+    {
+      "part": "rear_mounting_plate",
+      "transforms": ["center at [0,0,0] with plate thickness along Y"],
+      "zero_config_position": "rear plate center at world origin"
+    },
+    {
+      "part": "front_camera_plate",
+      "transforms": ["center at [0,30,0] with plate thickness along Y"],
+      "zero_config_position": "front plate parallel to rear plate with 25mm clear gap"
+    },
+    {
+      "part": "left_spacer_post",
+      "transforms": ["rotate cylinder axis to Y", "center at [-18,15,0]"],
+      "zero_config_position": "between the plates on the left M4 axis"
+    },
+    {
+      "part": "right_spacer_post",
+      "transforms": ["rotate cylinder axis to Y", "center at [18,15,0]"],
+      "zero_config_position": "between the plates on the right M4 axis"
+    },
+    {
+      "part": "left_m4_screw",
+      "transforms": ["rotate screw shaft axis to Y", "center at [-18,15,0]"],
+      "zero_config_position": "passing through rear plate, left spacer, and front plate"
+    },
+    {
+      "part": "right_m4_screw",
+      "transforms": ["rotate screw shaft axis to Y", "center at [18,15,0]"],
+      "zero_config_position": "passing through rear plate, right spacer, and front plate"
+    }
+  ],
+  "joint_definitions": [],
+  "failure_risks": [
+    {
+      "risk_name": "axis_swap",
+      "affected": "assembly_transform_chain",
+      "description": "code generation may accidentally separate plates along Z or orient spacers along X",
+      "mitigation": "treat Y as the only plate separation, spacer, and screw axis"
+    }
+  ],
+  "replan_changes": []
+}
+```
+
 OUTPUT:
 ```json
 {

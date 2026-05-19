@@ -106,3 +106,22 @@ def test_critic_b_prompt_uses_child_metadata_for_spatial_fidelity() -> None:
     assert "coaxial fasteners/spacers" in critic_b_prompt.lower()
     assert "Side-by-Side Parts That Should Be Stacked" in critic_b_examples
     assert "base center [0,0,15] and lid center [105,0,1.5]" in critic_b_examples
+
+
+def test_codegen_and_critic_prompts_use_face_axis_contracts() -> None:
+    codegen_prompt = (
+        PROMPT_ROOT / "system" / "code_generation_infill.md"
+    ).read_text(encoding="utf-8")
+    critic_b_prompt = (
+        PROMPT_ROOT / "system" / "critic_checkpoint_b.md"
+    ).read_text(encoding="utf-8")
+
+    for prompt in (codegen_prompt, critic_b_prompt):
+        assert "assembly_axes" in prompt
+        assert "part_frames" in prompt
+        assert "assembly_placement_constraints" in prompt
+        assert "alignment_groups" in prompt
+        assert "forbidden_layouts" in prompt
+
+    assert "binding spatial contracts" in codegen_prompt
+    assert "Planned face-axis contract" in critic_b_prompt
