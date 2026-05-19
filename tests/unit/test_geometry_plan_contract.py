@@ -1,5 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+from cadpilotv3.agents.geometry_planner_agent import GeometryPlannerAgent
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 
 PROMPT_ROOT = Path("src/cadpilotv3/prompts")
@@ -83,3 +85,48 @@ def test_geometry_planner_prompt_requires_face_axis_contract() -> None:
     assert "forbidden_layouts" in planner_prompt
     assert "Static Camera Mount Face-Axis Assembly Plan" in planner_examples
     assert "left_m4_spacer_stack" in planner_examples
+
+
+def test_geometry_planner_selects_camera_mount_example_without_whole_file() -> None:
+    agent = object.__new__(GeometryPlannerAgent)
+    few_shots = """
+### Example 1 - Static Single-Part Geometry Plan
+INPUT: servo bracket gussets
+OUTPUT: single part bracket plan
+
+### Example 2 - Static Assembly Geometry Plan
+INPUT: electronics enclosure base and lid
+OUTPUT: two part enclosure plan
+
+### Example 3 - Static Camera Mount Face-Axis Assembly Plan
+INPUT: rear plate front camera plate spacer posts and M4 screws
+OUTPUT: camera mount face-axis contract
+"""
+
+    selected = agent._select_relevant_examples(
+        few_shot_prompt=few_shots,
+        spec=SimpleNamespace(
+            component="machine_vision_camera_mount",
+            component_type="assembly",
+            style="flat parallel plates with spacers",
+            manufacturing_process="FDM",
+            approximate_scale="small",
+            parts=[
+                "rear_mounting_plate",
+                "front_camera_plate",
+                "left_spacer_post",
+                "right_spacer_post",
+                "left_m4_screw",
+                "right_m4_screw",
+            ],
+            constraints=[
+                "front_plate_parallel_to_rear_plate",
+                "m4_screws_coaxial_with_spacers",
+            ],
+        ),
+    )
+
+    assert "Selected Geometry Planner Few-Shots" in selected
+    assert "Static Camera Mount Face-Axis Assembly Plan" in selected
+    assert "Static Single-Part Geometry Plan" not in selected
+    assert "Static Assembly Geometry Plan" not in selected
