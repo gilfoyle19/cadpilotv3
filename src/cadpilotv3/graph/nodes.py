@@ -15,6 +15,7 @@ from cadpilotv3.services.code_generation_infill_service import (
     CodeGenerationInfillService,
     CodePatchApplicationError,
 )
+from cadpilotv3.services.contract_validation_service import ContractValidationService
 from cadpilotv3.services.critic_checkpoint_a_service import CriticCheckpointAService
 from cadpilotv3.services.critic_checkpoint_b_service import CriticCheckpointBService
 from cadpilotv3.services.export_summary_service import ExportSummaryService
@@ -40,6 +41,7 @@ class PipelineNodes:
 
         self.sandbox_service = CadQueryExecutionSandboxService()
         self.execution_validation_llm_agent = ExecutionValidationAgent(settings)
+        self.contract_validation_service = ContractValidationService()
 
         self.repair_service = RepairService(settings)
         self.critic_checkpoint_b_service = CriticCheckpointBService(settings)
@@ -245,6 +247,7 @@ class PipelineNodes:
     def execution_validation_node(self, state: PipelineState) -> PipelineState:
         artifacts = self.sandbox_service.execute(state["script"])
         state["validation"] = self.execution_validation_llm_agent.run(artifacts)
+        state["contract_validation"] = {}
 
         if state["validation"].status == "success":
             state["final_geometry"] = {
@@ -260,6 +263,7 @@ class PipelineNodes:
     async def aexecution_validation_node(self, state: PipelineState) -> PipelineState:
         artifacts = await self.sandbox_service.aexecute(state["script"])
         state["validation"] = await self.execution_validation_llm_agent.arun(artifacts)
+        state["contract_validation"] = {}
 
         if state["validation"].status == "success":
             state["final_geometry"] = {
@@ -270,6 +274,20 @@ class PipelineNodes:
         else:
             state["final_geometry"] = None
 
+        return state
+
+    def contract_validation_node(self, state: PipelineState) -> PipelineState:
+        state["contract_validation"] = self.contract_validation_service.execute(
+            geometry_plan=state["geometry_plan"],
+            validation=state["validation"],
+        )
+        return state
+
+    async def acontract_validation_node(self, state: PipelineState) -> PipelineState:
+        state["contract_validation"] = self.contract_validation_service.execute(
+            geometry_plan=state["geometry_plan"],
+            validation=state["validation"],
+        )
         return state
 
     def repair_agent(self, state: PipelineState) -> PipelineState:
@@ -387,6 +405,7 @@ class PipelineNodes:
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
             validation=state["validation"],
+            contract_validation=state.get("contract_validation"),
             critic_a_report=state["critic_a_report"],
             repair_count=state["repair_count"],
         )
@@ -406,6 +425,7 @@ class PipelineNodes:
             geometry_plan=state["geometry_plan"],
             parameters=state["parameters"],
             validation=state["validation"],
+            contract_validation=state.get("contract_validation"),
             critic_a_report=state["critic_a_report"],
             repair_count=state["repair_count"],
         )

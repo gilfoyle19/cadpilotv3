@@ -70,6 +70,62 @@ def test_geometry_plan_schema_accepts_face_axis_assembly_contract() -> None:
     assert "side-by-side" in plan.forbidden_layouts[0]
 
 
+def test_geometry_plan_schema_accepts_feature_and_assembly_contracts() -> None:
+    plan = GeometryPlan.model_validate(
+        {
+            "artifact_type": "assembly",
+            "parts": [
+                {
+                    "name": "base_plate",
+                    "modeling_strategy": "primitive_csg",
+                    "strategy_selection": {
+                        "candidates": [
+                            {
+                                "strategy": "primitive_csg",
+                                "advantage": "simple plate",
+                                "disadvantage": "requires explicit cutters",
+                            }
+                        ],
+                        "winner": "primitive_csg",
+                        "rationale": "stable base plate construction",
+                    },
+                }
+            ],
+            "feature_contracts": [
+                {
+                    "id": "base_m4_hole_1",
+                    "host_part": "base_plate",
+                    "type": "through_hole",
+                    "operation": "cut",
+                    "axis": "Z",
+                    "center": ["-HOLE_X_OFFSET", "-HOLE_Y_OFFSET", "BASE_T / 2"],
+                    "dimensions": {"diameter": "M4_CLEARANCE_D"},
+                    "count_group": "base_m4_hole_pattern",
+                    "required": True,
+                    "description": "first M4 clearance hole in the base pattern",
+                }
+            ],
+            "assembly_contracts": [
+                {
+                    "id": "lid_centered_on_base",
+                    "type": "centered",
+                    "parts": ["base_plate", "lid"],
+                    "axes": ["X", "Y"],
+                    "feature_refs": ["base_m4_hole_1"],
+                    "target": "centers share X and Y",
+                    "tolerance_mm": 0.25,
+                    "description": "lid and base stay centered in plan view",
+                }
+            ],
+        }
+    )
+
+    assert plan.required_features == ["base_m4_hole_1"]
+    assert plan.feature_contracts[0].type == "through_hole"
+    assert plan.feature_contracts[0].dimensions["diameter"] == "M4_CLEARANCE_D"
+    assert plan.assembly_contracts[0].tolerance_mm == 0.25
+
+
 def test_geometry_planner_prompt_requires_face_axis_contract() -> None:
     planner_prompt = (
         PROMPT_ROOT / "system" / "geometry_planner_agent.md"
@@ -83,8 +139,13 @@ def test_geometry_planner_prompt_requires_face_axis_contract() -> None:
     assert "part_frames" in planner_prompt
     assert "alignment_groups" in planner_prompt
     assert "forbidden_layouts" in planner_prompt
+    assert "required_features" in planner_prompt
+    assert "feature_contracts" in planner_prompt
+    assert "assembly_contracts" in planner_prompt
     assert "Static Camera Mount Face-Axis Assembly Plan" in planner_examples
     assert "left_m4_spacer_stack" in planner_examples
+    assert "rear_plate_m6_hole_pattern" in planner_examples
+    assert "plates_centered_xz" in planner_examples
 
 
 def test_geometry_planner_selects_camera_mount_example_without_whole_file() -> None:

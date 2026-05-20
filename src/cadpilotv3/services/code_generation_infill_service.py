@@ -40,6 +40,14 @@ PUBLIC_ENTRYPOINT_RESULT_NAMES = {
 }
 RESULT_OBJECT_NAMES = frozenset({"model", "assembly", "result", "final_geometry"})
 REQUIRED_SUPPORT_FUNCTIONS = frozenset({"validate_geometry", "export_all"})
+BUILD_MANIFEST_NAME = "BUILD_MANIFEST"
+REQUIRED_BUILD_MANIFEST_KEYS = frozenset(
+    {
+        "features",
+        "part_frames",
+        "assembly_constraints",
+    }
+)
 DISALLOWED_VALIDATE_GEOMETRY_CALLS = frozenset(
     {
         "build_part",
@@ -579,6 +587,7 @@ class CodeGenerationInfillService:
         entrypoint_name = entrypoint_names[0]
         self._validate_top_level_result_assignment(tree, main_guards[0])
         self._validate_main_guard_skeleton(main_guards[0], entrypoint_name)
+        self._validate_build_manifest_contract(tree, validate_geometry_function)
 
     def _validate_top_level_result_assignment(
         self,
@@ -673,6 +682,74 @@ class CodeGenerationInfillService:
                 "Generated script __main__ block must call "
                 f"export_all({result_name}, ...)"
             )
+
+    def _validate_build_manifest_contract(
+        self,
+        tree: ast.Module,
+        validate_geometry_function: ast.FunctionDef,
+    ) -> None:
+        manifest_value = self._find_top_level_assignment_value(tree, BUILD_MANIFEST_NAME)
+        if manifest_value is None:
+            raise CodeGenerationOutputError(
+                "Generated script must define a top-level BUILD_MANIFEST dictionary"
+            )
+
+        if not isinstance(manifest_value, ast.Dict):
+            raise CodeGenerationOutputError(
+                "Generated BUILD_MANIFEST must be a literal dictionary"
+            )
+
+        manifest_keys = {
+            key.value
+            for key in manifest_value.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        }
+        missing_keys = REQUIRED_BUILD_MANIFEST_KEYS - manifest_keys
+        if missing_keys:
+            missing = ", ".join(sorted(missing_keys))
+            raise CodeGenerationOutputError(
+                f"Generated BUILD_MANIFEST must include keys: {missing}"
+            )
+
+        for key, value in zip(manifest_value.keys, manifest_value.values, strict=True):
+            if (
+                isinstance(key, ast.Constant)
+                and key.value in REQUIRED_BUILD_MANIFEST_KEYS
+                and not isinstance(value, ast.List)
+            ):
+                raise CodeGenerationOutputError(
+                    "Generated BUILD_MANIFEST keys features, part_frames, and "
+                    "assembly_constraints must be lists"
+                )
+
+        if not any(
+            isinstance(node, ast.Name) and node.id == BUILD_MANIFEST_NAME
+            for node in ast.walk(validate_geometry_function)
+        ):
+            raise CodeGenerationOutputError(
+                "Generated validate_geometry() must include BUILD_MANIFEST in "
+                "its returned validation dictionary"
+            )
+
+    def _find_top_level_assignment_value(
+        self,
+        tree: ast.Module,
+        assignment_name: str,
+    ) -> ast.AST | None:
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                if any(
+                    isinstance(target, ast.Name) and target.id == assignment_name
+                    for target in node.targets
+                ):
+                    return node.value
+            if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == assignment_name
+            ):
+                return node.value
+        return None
 
     def _is_result_assignment_from_entrypoint(
         self,

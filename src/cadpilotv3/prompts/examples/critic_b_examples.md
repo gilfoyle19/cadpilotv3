@@ -27,6 +27,12 @@ INPUT:
       }
     ]
   },
+  "contract_validation_report": {
+    "status": "pass",
+    "failure_count": 0,
+    "warning_count": 0,
+    "compact_evidence": []
+  },
   "checkpoint_a": "pass"
 }
 ```
@@ -84,6 +90,15 @@ INPUT:
       }
     ]
   },
+  "contract_validation_report": {
+    "status": "fail",
+    "failure_count": 2,
+    "warning_count": 0,
+    "compact_evidence": [
+      "fail:lid_centered_on_base:Part centers violate centered assembly contract.",
+      "fail:lid_above_base:Second part is not above the first on the declared axis."
+    ]
+  },
   "observed_issue": "The lid is placed next to the base instead of closed on top."
 }
 ```
@@ -108,7 +123,7 @@ OUTPUT:
       "severity": "critical",
       "score": 0.35,
       "description": "The lid is modeled as a separate component but is not in the closed assembled position on top of the base.",
-      "evidence": "child_metadata shows base center [0,0,15] and lid center [105,0,1.5], so the parts are separated in X instead of stacked in Z.",
+      "evidence": "contract_validation compact_evidence includes fail:lid_centered_on_base and fail:lid_above_base; child_metadata shows base center [0,0,15] and lid center [105,0,1.5], so the parts are separated in X instead of stacked in Z.",
       "suggested_routing": "replan",
       "correction": "Replan the assembly transforms so the lid shares the base X/Y center and sits above the base in Z."
     }
@@ -132,6 +147,14 @@ INPUT:
     "is_manifold": true,
     "has_zero_volume_parts": false,
     "assembly_valid": true
+  },
+  "contract_validation_report": {
+    "status": "warn",
+    "failure_count": 0,
+    "warning_count": 1,
+    "compact_evidence": [
+      "warn:m3_hole_clearance_bbox:Manifest feature bounding box could not confirm cutter clearance."
+    ]
   },
   "observed_issue": "triangular gussets intersect the M3 motor mounting holes"
 }

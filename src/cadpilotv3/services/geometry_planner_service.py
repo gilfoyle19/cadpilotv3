@@ -75,6 +75,8 @@ class GeometryPlannerService:
             "Geometry plan created",
             extra={
                 "parts_count": len(geometry_plan.parts),
+                "feature_contracts_count": len(geometry_plan.feature_contracts),
+                "assembly_contracts_count": len(geometry_plan.assembly_contracts),
                 "joint_definitions_count": len(geometry_plan.joint_definitions),
                 "failure_risks_count": len(geometry_plan.failure_risks),
                 "is_replan": (

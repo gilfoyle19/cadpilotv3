@@ -55,6 +55,8 @@ class SandboxExecutionArtifacts:
     geometry_report: SandboxGeometryReport | None
     result_object_name: str | None
     workspace_dir: str
+    build_manifest: dict[str, Any] | None = None
+    generated_validation: dict[str, Any] | None = None
 
 
 class CadQueryExecutionSandboxService:
@@ -105,6 +107,8 @@ class CadQueryExecutionSandboxService:
         original_cwd = Path.cwd()
         result_object_name: str | None = None
         geometry_report: SandboxGeometryReport | None = None
+        build_manifest: dict[str, Any] | None = None
+        generated_validation: dict[str, Any] | None = None
 
         try:
             os.chdir(run_dir)
@@ -117,7 +121,16 @@ class CadQueryExecutionSandboxService:
             result_object_name = self._find_result_object_name(globals_dict)
             if result_object_name is None:
                 result_object_name = self._materialize_result_object(globals_dict)
+            build_manifest = self._extract_build_manifest(globals_dict)
             if result_object_name is not None:
+                generated_validation = self._run_generated_validation(
+                    globals_dict,
+                    result_object_name,
+                )
+                build_manifest = self._coalesce_build_manifest(
+                    build_manifest,
+                    generated_validation,
+                )
                 geometry_report = self._inspect_geometry(globals_dict[result_object_name])
 
             execution_succeeded = True
@@ -158,6 +171,8 @@ class CadQueryExecutionSandboxService:
             geometry_report=geometry_report,
             result_object_name=result_object_name,
             workspace_dir=str(run_dir),
+            build_manifest=build_manifest,
+            generated_validation=generated_validation,
         )
 
         (run_dir / "execution_artifacts.json").write_text(
@@ -166,6 +181,39 @@ class CadQueryExecutionSandboxService:
         )
 
         return artifacts
+
+    def _extract_build_manifest(self, globals_dict: dict[str, Any]) -> dict[str, Any] | None:
+        manifest = globals_dict.get("BUILD_MANIFEST")
+        return manifest if isinstance(manifest, dict) else None
+
+    def _run_generated_validation(
+        self,
+        globals_dict: dict[str, Any],
+        result_object_name: str,
+    ) -> dict[str, Any] | None:
+        validate_geometry = globals_dict.get("validate_geometry")
+        if not callable(validate_geometry):
+            return None
+
+        try:
+            result = validate_geometry(globals_dict[result_object_name])
+        except Exception:
+            return None
+
+        return result if isinstance(result, dict) else None
+
+    def _coalesce_build_manifest(
+        self,
+        build_manifest: dict[str, Any] | None,
+        generated_validation: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if build_manifest is not None:
+            return build_manifest
+        if not isinstance(generated_validation, dict):
+            return None
+
+        manifest = generated_validation.get("build_manifest")
+        return manifest if isinstance(manifest, dict) else None
 
     async def aexecute(self, script: str) -> SandboxExecutionArtifacts:
         return await asyncio.to_thread(self.execute, script)

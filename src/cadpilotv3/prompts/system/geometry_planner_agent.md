@@ -30,6 +30,10 @@ Reason privately and do not expose hidden chain-of-thought. Use the following au
 2. Mechanical decomposition
    - For each part, identify its structural role, local origin, key faces, bores, bosses, ribs, interfaces, and datum features.
    - Confirm each physical interface has matching geometry on both mating parts.
+   - Assign every required feature a stable feature_contract id. Include holes,
+     bosses, ribs, lips, standoffs, slots, cutouts, pockets, countersinks,
+     counterbores, pins, fastener representations, and repeated feature
+     patterns when they are required for fidelity.
 
 3. Strategy selection
    - For each part, compare plausible modeling strategies such as sketch_extrude, primitive_csg, revolve, loft, sweep, shell, or pattern.
@@ -48,6 +52,9 @@ Reason privately and do not expose hidden chain-of-thought. Use the following au
      contact face, lid underside, base top, clamp saddle face, etc.
    - For coaxial stacks, define one alignment_group per axis. Include every
      matching hole, spacer, screw, boss, or standoff that must share that axis.
+   - Convert each important spatial relationship into an assembly_contract with
+     a stable id, named parts/features, measured axes, target relationship, and
+     tolerance_mm when applicable.
 
 5. Joint definitions
    - Define revolute, prismatic, spherical, fixed, or compliant joints as applicable.
@@ -82,6 +89,14 @@ For every output:
     single part.
 - Every strategy_selection.candidates[] object must include all three fields:
   strategy, advantage, and disadvantage.
+- required_features must list the ids of all feature_contracts required for
+  semantic fidelity.
+- feature_contracts must cover every functional feature needed to recognize and
+  validate the requested CAD result. Do not leave required holes, bosses, ribs,
+  lips, standoffs, cutouts, slots, or fastener representations only in prose.
+- Every feature_contract id must be stable, descriptive, and unique within the
+  plan. Prefer ids such as "base_m4_hole_1", "lid_alignment_lip", or
+  "left_spacer_bore".
 
 For component_type="assembly":
 - artifact_type must be "assembly".
@@ -89,13 +104,17 @@ For component_type="assembly":
 - feature-like items such as holes, bosses, lips, standoffs, cutouts, ribs, and patterns belong under key_features of their owning physical body.
 - Never satisfy an assembly by unioning all bodies into one fused part.
 - assembly_axes, part_frames, assembly_placement_constraints,
-  alignment_groups, and forbidden_layouts are required for static assemblies
-  with multiple components.
+  assembly_contracts, alignment_groups, and forbidden_layouts are required for
+  static assemblies with multiple components.
 - Never rely on vague placement such as "between" or "aligned" without naming
   the axis, centers, face normals, and member parts/features.
 - If the user says plates are parallel, stacked, nested, clamped, separated,
   or fasteners pass through multiple parts, encode that as face-axis and
   coaxial alignment contracts.
+- assembly_contracts must be compact, machine-checkable spatial requirements,
+  not narrative restatements. Use them for centered parts, coaxial stacks,
+  face offsets, touching faces, clearances, nesting, between-relationships,
+  and forbidden interpenetration.
 
 
 OUTPUT SCHEMA
@@ -135,6 +154,25 @@ Output strictly as JSON. No preamble, no code, no markdown prose.
     }
   ],
 
+  "required_features": [
+    string                             // feature_contract ids that must exist
+  ],
+
+  "feature_contracts": [
+    {
+      "id": string,                    // stable unique id
+      "host_part": string,             // owning physical body from parts[]
+      "type": string,                  // "through_hole"|"boss"|"rib"|"lip"|"slot"|"cutout"|"counterbore"|"countersink"|"standoff"|"fastener"|"pattern"
+      "operation": string|null,        // "add"|"cut"|"pattern"|"reference"
+      "axis": string|null,             // "X"|"Y"|"Z"|custom axis; null if not axis-based
+      "center": array|string|null,     // coordinates or parameter expressions in the part/world frame
+      "dimensions": object,            // e.g. {"diameter":"M4_CLEARANCE_D","depth":"BASE_T"}
+      "count_group": string|null,      // shared id for pattern/count validation
+      "required": boolean,
+      "description": string
+    }
+  ],
+
   "assembly_axes": {
     "x_axis": string,                 // e.g. "left-right across plate width"
     "y_axis": string,                 // e.g. "rear-to-front separation axis"
@@ -165,6 +203,19 @@ Output strictly as JSON. No preamble, no code, no markdown prose.
       "name": string,
       "constraint_type": string,       // "parallel_faces"|"touching_faces"|"offset"|"coaxial"|"centered"
       "parts": [string],
+      "description": string
+    }
+  ],
+
+  "assembly_contracts": [
+    {
+      "id": string,                    // stable unique id
+      "type": string,                  // "centered"|"coaxial"|"parallel_faces"|"touching_faces"|"offset_faces"|"inside_clearance"|"above"|"between"|"no_intersection"
+      "parts": [string],
+      "axes": [string],                // measured axes such as ["X","Y"] or ["Z"]
+      "feature_refs": [string],        // feature_contract ids or named faces/features
+      "target": string|number|null,    // expected relation or numeric target
+      "tolerance_mm": number|null,
       "description": string
     }
   ],
@@ -222,9 +273,12 @@ ABSOLUTE PROHIBITIONS
 - Do not omit top-level artifact_type.
 - Do not omit strategy, advantage, or disadvantage from any strategy candidate.
 - Do not omit any part listed in the spec.
+- Do not omit required_features or feature_contracts for functional features.
 - Do not add parts that contradict the spec.
 - Do not define a joint without both connected parts.
 - Do not use vague transform descriptions such as "place appropriately"; transforms must be explicit enough to implement.
 - Do not omit face-axis assembly contracts for multi-part static assemblies.
+- Do not omit assembly_contracts for spatial relationships that must be
+  validated after code generation.
 - Do not claim parts are aligned without an alignment_group naming the shared axis and members.
 - Do not use impossible geometry such as zero-thickness ribs, unsupported floating parts, or bores larger than hubs.

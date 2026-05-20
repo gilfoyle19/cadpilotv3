@@ -62,3 +62,37 @@ def test_validation_report_preserves_child_metadata(tmp_path) -> None:
         "upper",
     ]
     assert report.geometry_report.child_metadata[1].center_mm == [0.0, 0.0, 4.0]
+
+
+def test_sandbox_captures_build_manifest_from_generated_validation(tmp_path) -> None:
+    service = CadQueryExecutionSandboxService(base_work_dir=str(tmp_path))
+    artifacts = service.execute(
+        "\n".join(
+            [
+                "import cadquery as cq",
+                "BUILD_MANIFEST = {",
+                "    'features': [],",
+                "    'part_frames': [],",
+                "    'assembly_constraints': [],",
+                "}",
+                "def build_part():",
+                "    return cq.Workplane('XY').box(10, 10, 2)",
+                "def validate_geometry(model):",
+                "    return {'build_manifest': BUILD_MANIFEST, 'positive_volume': True}",
+                "model = build_part()",
+                "validate_geometry(model)",
+                "",
+            ]
+        )
+    )
+
+    report = ExecutionValidationAgent(settings=None).run(artifacts)
+
+    assert artifacts.build_manifest == {
+        "features": [],
+        "part_frames": [],
+        "assembly_constraints": [],
+    }
+    assert artifacts.generated_validation is not None
+    assert report.build_manifest == artifacts.build_manifest
+    assert report.generated_validation == artifacts.generated_validation

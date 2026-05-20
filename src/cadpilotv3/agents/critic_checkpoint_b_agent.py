@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.llm import AgentName, get_llm_factory
+from cadpilotv3.schemas.contract_validation import ContractValidationReport
 from cadpilotv3.schemas.critic import CriticBReport, CriticReport
 from cadpilotv3.schemas.geometry_plan import GeometryPlan
 from cadpilotv3.schemas.intent_spec import IntentSpec
@@ -24,6 +26,7 @@ class CriticCheckpointBAgent:
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
         validation: ValidationReport,
+        contract_validation: ContractValidationReport | None,
         critic_a_report: CriticReport,
         repair_count: int,
     ) -> CriticBReport:
@@ -34,6 +37,7 @@ class CriticCheckpointBAgent:
             geometry_plan=geometry_plan,
             parameters=parameters,
             validation=validation,
+            contract_validation=contract_validation,
             critic_a_report=critic_a_report,
             repair_count=repair_count,
         )
@@ -43,7 +47,14 @@ class CriticCheckpointBAgent:
             prompt,
             CriticBReport,
             agent_name=AgentName.CRITIC_B.value,
-            trace_metadata={"repair_count": repair_count},
+            trace_metadata={
+                "repair_count": repair_count,
+                "contract_validation_status": getattr(
+                    contract_validation,
+                    "status",
+                    None,
+                ),
+            },
         )
 
     async def arun(
@@ -53,6 +64,7 @@ class CriticCheckpointBAgent:
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
         validation: ValidationReport,
+        contract_validation: ContractValidationReport | None,
         critic_a_report: CriticReport,
         repair_count: int,
     ) -> CriticBReport:
@@ -63,6 +75,7 @@ class CriticCheckpointBAgent:
             geometry_plan=geometry_plan,
             parameters=parameters,
             validation=validation,
+            contract_validation=contract_validation,
             critic_a_report=critic_a_report,
             repair_count=repair_count,
         )
@@ -72,7 +85,14 @@ class CriticCheckpointBAgent:
             prompt,
             CriticBReport,
             agent_name=AgentName.CRITIC_B.value,
-            trace_metadata={"repair_count": repair_count},
+            trace_metadata={
+                "repair_count": repair_count,
+                "contract_validation_status": getattr(
+                    contract_validation,
+                    "status",
+                    None,
+                ),
+            },
         )
 
     def _build_prompt(
@@ -83,6 +103,7 @@ class CriticCheckpointBAgent:
         geometry_plan: GeometryPlan,
         parameters: ParameterSchema,
         validation: ValidationReport,
+        contract_validation: ContractValidationReport | None,
         critic_a_report: CriticReport,
         repair_count: int,
     ) -> str:
@@ -113,12 +134,45 @@ class CriticCheckpointBAgent:
                 parameters.model_dump_json(indent=2),
                 "Validation report:",
                 validation.model_dump_json(indent=2),
+                "Deterministic contract validation report:",
+                self._format_contract_validation_evidence(contract_validation),
                 "Checkpoint A report:",
                 critic_a_report.model_dump_json(indent=2),
                 f"Repair history count: {repair_count}",
             ]
         )
         return prompt
+
+    def _format_contract_validation_evidence(
+        self,
+        contract_validation: ContractValidationReport | None,
+    ) -> str:
+        if contract_validation is None:
+            return json.dumps(
+                {
+                    "status": "missing",
+                    "summary": "No deterministic contract validation report was provided.",
+                },
+                indent=2,
+            )
+
+        checks = [
+            check.model_dump(mode="json")
+            for check in contract_validation.checks
+            if check.status in {"fail", "warn"}
+        ][:8]
+        payload = {
+            "status": contract_validation.status,
+            "passed": contract_validation.passed,
+            "summary": contract_validation.summary,
+            "failure_count": contract_validation.failure_count,
+            "warning_count": contract_validation.warning_count,
+            "compact_evidence": contract_validation.compact_evidence[:12],
+        }
+        if checks:
+            payload["failed_or_warning_checks"] = checks
+
+        return json.dumps(payload, indent=2)
 
     def _select_relevant_examples(
         self,

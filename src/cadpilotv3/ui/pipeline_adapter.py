@@ -30,6 +30,7 @@ def build_initial_state(user_prompt: str) -> PipelineState:
         "parameters": {},
         "script": "",
         "validation": {},
+        "contract_validation": {},
         "critic_a_report": {},
         "critic_b_report": {},
         "repair_decision": None,

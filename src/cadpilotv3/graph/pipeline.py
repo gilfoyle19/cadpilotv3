@@ -25,6 +25,7 @@ def build_pipeline(settings: AppSettings):
         parameter_agent=nodes.parameter_agent,
         code_generation_infill_agent=nodes.code_generation_infill_agent,
         execution_validation_node=nodes.execution_validation_node,
+        contract_validation_node=nodes.contract_validation_node,
         repair_agent=nodes.repair_agent,
         critic_checkpoint_b=nodes.critic_checkpoint_b,
         export_summary_agent=nodes.export_summary_agent,
@@ -46,6 +47,7 @@ def build_async_pipeline(settings: AppSettings):
         parameter_agent=nodes.aparameter_agent,
         code_generation_infill_agent=nodes.acode_generation_infill_agent,
         execution_validation_node=nodes.aexecution_validation_node,
+        contract_validation_node=nodes.acontract_validation_node,
         repair_agent=nodes.arepair_agent,
         critic_checkpoint_b=nodes.acritic_checkpoint_b,
         export_summary_agent=nodes.aexport_summary_agent,
@@ -62,6 +64,7 @@ def _add_nodes(graph: StateGraph, **nodes) -> None:
     graph.add_node("parameter_agent", nodes["parameter_agent"])
     graph.add_node("code_generation_infill_agent", nodes["code_generation_infill_agent"])
     graph.add_node("execution_validation_node", nodes["execution_validation_node"])
+    graph.add_node("contract_validation_node", nodes["contract_validation_node"])
     graph.add_node("repair_agent", nodes["repair_agent"])
     graph.add_node("critic_checkpoint_b", nodes["critic_checkpoint_b"])
     graph.add_node("export_summary_agent", nodes["export_summary_agent"])
@@ -90,7 +93,7 @@ def _wire_graph(graph: StateGraph) -> None:
         route_validation,
         {
             "repair_agent": "repair_agent",
-            "critic_checkpoint_b": "critic_checkpoint_b",
+            "contract_validation_node": "contract_validation_node",
         },
     )
 
@@ -101,9 +104,11 @@ def _wire_graph(graph: StateGraph) -> None:
             "execution_validation_node": "execution_validation_node",
             "code_generation_infill_agent": "code_generation_infill_agent",
             "geometry_planner_agent": "geometry_planner_agent",
-            "critic_checkpoint_b": "critic_checkpoint_b",
+            "contract_validation_node": "contract_validation_node",
         },
     )
+
+    graph.add_edge("contract_validation_node", "critic_checkpoint_b")
 
     graph.add_conditional_edges(
         "critic_checkpoint_b",

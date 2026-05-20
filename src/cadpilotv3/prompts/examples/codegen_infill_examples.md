@@ -13,6 +13,7 @@ INPUT:
 OUTPUT:
 ```python
 import cadquery as cq
+import os
 from cadquery import exporters
 
 COMPONENT_NAME = "micro_servo_extrusion_mount"
@@ -41,6 +42,68 @@ SERVO_HOLE_Z_CENTER = BASE_T + 23.0
 
 EXTRUSION_SLOT_PATTERN_SPACING = 20.0
 EXTRUSION_HOLE_Y = 10.0
+
+BUILD_MANIFEST = {
+    "component": COMPONENT_NAME,
+    "artifact_type": "single_part",
+    "features": [
+        {
+            "id": "servo_m2_hole_pattern",
+            "host_part": "l_bracket_body",
+            "type": "through_hole_pattern",
+            "operation": "cut",
+            "axis": "Y",
+            "center_mm": [0.0, -BASE_W / 2 + SERVO_PLATE_T / 2, SERVO_HOLE_Z_CENTER],
+            "dimensions_mm": {
+                "count": 4,
+                "diameter": M2_CLEAR_D,
+                "x_spacing": SERVO_HOLE_X_SPACING,
+                "z_spacing": SERVO_HOLE_Z_SPACING,
+            },
+            "count_group": "servo_m2_pattern",
+            "required": True,
+        },
+        {
+            "id": "extrusion_m5_hole_pattern",
+            "host_part": "l_bracket_body",
+            "type": "through_hole_pattern",
+            "operation": "cut",
+            "axis": "Z",
+            "center_mm": [0.0, EXTRUSION_HOLE_Y, BASE_T / 2],
+            "dimensions_mm": {
+                "count": 2,
+                "diameter": M5_CLEAR_D,
+                "spacing": EXTRUSION_SLOT_PATTERN_SPACING,
+            },
+            "count_group": "extrusion_m5_pattern",
+            "required": True,
+        },
+        {
+            "id": "outboard_gussets",
+            "host_part": "l_bracket_body",
+            "type": "rib_pattern",
+            "operation": "add",
+            "axis": "X",
+            "center_mm": [-GUSSET_X_OFFSET, GUSSET_X_OFFSET],
+            "dimensions_mm": {
+                "count": 2,
+                "thickness": GUSSET_T,
+                "reach_y": GUSSET_REACH_Y,
+                "rise_z": GUSSET_RISE_Z,
+            },
+            "count_group": "outboard_gussets",
+            "required": True,
+        },
+    ],
+    "part_frames": [
+        {
+            "part": "l_bracket_body",
+            "center_mm": [0.0, 0.0, (BASE_T + SERVO_PLATE_H) / 2],
+            "bbox_mm": [BASE_L, BASE_W, BASE_T + SERVO_PLATE_H],
+        }
+    ],
+    "assembly_constraints": [],
+}
 
 
 def make_y_axis_cylinder(diameter: float, length: float, x: float, y: float, z: float) -> cq.Workplane:
@@ -121,9 +184,28 @@ def build_part() -> cq.Workplane:
     return mount.clean()
 
 
+def validate_geometry(model: cq.Workplane) -> dict:
+    shape = model.val()
+    bbox = shape.BoundingBox()
+    return {
+        "build_manifest": BUILD_MANIFEST,
+        "positive_volume": shape.Volume() > 0,
+        "positive_bounding_box": bbox.xlen > 0 and bbox.ylen > 0 and bbox.zlen > 0,
+        "feature_count": len(BUILD_MANIFEST["features"]),
+    }
+
+
+def export_all(model: cq.Workplane, output_dir: str = "./output") -> list[str]:
+    os.makedirs(output_dir, exist_ok=True)
+    step_path = os.path.join(output_dir, f"{COMPONENT_NAME}.step")
+    exporters.export(model, step_path)
+    return [step_path]
+
+
 if __name__ == "__main__":
     model = build_part()
-    exporters.export(model, f"{COMPONENT_NAME}.step")
+    validate_geometry(model)
+    export_all(model, "./output")
 ```
 
 ### Static Example 2 - 608 Bearing Pillow Block
@@ -456,6 +538,7 @@ INPUT:
 OUTPUT:
 ```python
 import cadquery as cq
+import os
 
 COMPONENT_NAME = "two_part_electronics_enclosure"
 
@@ -487,6 +570,102 @@ CABLE_OPENING_H = 9.0
 CABLE_OPENING_Z = BOTTOM_T + CABLE_OPENING_H / 2.0
 
 SMALL_CHAMFER = 0.5
+
+BUILD_MANIFEST = {
+    "component": COMPONENT_NAME,
+    "artifact_type": "assembly",
+    "features": [
+        {
+            "id": "base_pcb_standoff_pattern",
+            "host_part": "base",
+            "type": "standoff_pattern",
+            "operation": "add",
+            "axis": "Z",
+            "center_mm": "four centers at +/-SCREW_X_SPACING/2 and +/-SCREW_Y_SPACING/2",
+            "dimensions_mm": {
+                "count": 4,
+                "diameter": STANDOFF_OD,
+                "height": STANDOFF_H,
+                "bore_diameter": M3_PILOT_D,
+            },
+            "count_group": "m3_lid_fastener_pattern",
+            "required": True,
+        },
+        {
+            "id": "base_cable_opening",
+            "host_part": "base",
+            "type": "cutout",
+            "operation": "cut",
+            "axis": "X",
+            "center_mm": [OUTER_L / 2 - WALL_T / 2, 0.0, CABLE_OPENING_Z],
+            "dimensions_mm": {"width": CABLE_OPENING_W, "height": CABLE_OPENING_H},
+            "count_group": None,
+            "required": True,
+        },
+        {
+            "id": "lid_alignment_lip",
+            "host_part": "removable_lid",
+            "type": "lip",
+            "operation": "add",
+            "axis": "Z",
+            "center_mm": [0.0, 0.0, BASE_H - LID_LIP_H / 2],
+            "dimensions_mm": {
+                "height": LID_LIP_H,
+                "thickness": LID_LIP_T,
+                "clearance": LID_CLEARANCE,
+            },
+            "count_group": "lid_lip_set",
+            "required": True,
+        },
+        {
+            "id": "lid_m3_countersunk_hole_pattern",
+            "host_part": "removable_lid",
+            "type": "countersunk_hole_pattern",
+            "operation": "cut",
+            "axis": "Z",
+            "center_mm": "four centers matching the base standoff pattern",
+            "dimensions_mm": {
+                "count": 4,
+                "through_diameter": M3_CLEAR_D,
+                "countersink_diameter": M3_COUNTERSINK_D,
+            },
+            "count_group": "m3_lid_fastener_pattern",
+            "required": True,
+        },
+    ],
+    "part_frames": [
+        {
+            "part": "base",
+            "center_mm": [0.0, 0.0, BASE_H / 2],
+            "bbox_mm": [OUTER_L, OUTER_W, BASE_H],
+        },
+        {
+            "part": "removable_lid",
+            "center_mm": [0.0, 0.0, BASE_H + LID_TOP_T / 2],
+            "bbox_mm": [OUTER_L, OUTER_W, LID_TOP_T],
+        },
+    ],
+    "assembly_constraints": [
+        {
+            "id": "lid_centered_xy",
+            "type": "centered",
+            "parts": ["base", "removable_lid"],
+            "axes": ["X", "Y"],
+            "feature_refs": ["base_pcb_standoff_pattern", "lid_m3_countersunk_hole_pattern"],
+            "target": "base and lid centers share X=0 and Y=0",
+            "tolerance_mm": 0.25,
+        },
+        {
+            "id": "lid_holes_coaxial_with_standoffs",
+            "type": "coaxial",
+            "parts": ["base", "removable_lid"],
+            "axes": ["Z"],
+            "feature_refs": ["base_pcb_standoff_pattern", "lid_m3_countersunk_hole_pattern"],
+            "target": "four matching fastener centers share vertical Z axes",
+            "tolerance_mm": 0.25,
+        },
+    ],
+}
 
 
 def make_z_axis_cylinder(diameter: float, height: float, x: float, y: float, z: float) -> cq.Workplane:
@@ -630,9 +809,27 @@ def build_assembly() -> cq.Assembly:
     return assembly
 
 
+def validate_geometry(assembly: cq.Assembly) -> dict:
+    children = getattr(assembly, "children", [])
+    return {
+        "build_manifest": BUILD_MANIFEST,
+        "assembly_child_count_positive": len(children) > 0,
+        "manifest_feature_count": len(BUILD_MANIFEST["features"]),
+        "manifest_constraint_count": len(BUILD_MANIFEST["assembly_constraints"]),
+    }
+
+
+def export_all(assembly: cq.Assembly, output_dir: str = "./output") -> list[str]:
+    os.makedirs(output_dir, exist_ok=True)
+    step_path = os.path.join(output_dir, f"{COMPONENT_NAME}_assembly.step")
+    assembly.save(step_path)
+    return [step_path]
+
+
 if __name__ == "__main__":
     assembly = build_assembly()
-    assembly.save(f"{COMPONENT_NAME}_assembly.step")
+    validate_geometry(assembly)
+    export_all(assembly, "./output")
 ```
 
 ### Static Assembly Example 2 - Split Tube Clamp Block

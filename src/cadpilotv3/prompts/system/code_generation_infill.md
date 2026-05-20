@@ -149,22 +149,83 @@ SCRIPT STRUCTURE
 2. The first line must be exactly `import cadquery as cq`. Put any other imports
    on later lines. Use CadQuery 2.x and Python standard-library imports only.
 3. Emit every parameter from the schema as a Python constant.
-4. Define any helper functions before use.
-5. For a single-part artifact, define build_part() -> cq.Workplane as the
+4. Define a top-level `BUILD_MANIFEST` literal dictionary after constants and
+   before helper functions. It must contain `features`, `part_frames`, and
+   `assembly_constraints` list keys.
+5. Define any helper functions before use.
+6. For a single-part artifact, define build_part() -> cq.Workplane as the
    public entry point. Helper functions may use descriptive names such as
    make_cutter(), but the final part must be returned by build_part().
-6. For an assembly artifact, define build_assembly() -> cq.Assembly as the
+7. For an assembly artifact, define build_assembly() -> cq.Assembly as the
    public entry point. Helper part factories may use descriptive names.
    Define exactly one public entry point: build_part() or build_assembly(), not
    both.
-7. Include validate_geometry(...) -> dict with cheap robust checks.
-8. Include export_all(...) -> list[str]. Put all STEP/STL export logic inside
+8. Include validate_geometry(...) -> dict with cheap robust checks.
+9. Include export_all(...) -> list[str]. Put all STEP/STL export logic inside
    export_all; do not call exporters.export(...) or assembly.save(...) directly
    in the main block.
-9. Include an if __name__ == "__main__": block that builds the model or
-   assembly by calling build_part() for single parts or build_assembly() for
-   assemblies, assigns it to a top-level variable named model or assembly,
-   calls validate_geometry(...), then calls export_all(...).
+10. Include an if __name__ == "__main__": block that builds the model or
+    assembly by calling build_part() for single parts or build_assembly() for
+    assemblies, assigns it to a top-level variable named model or assembly,
+    calls validate_geometry(...), then calls export_all(...).
+
+BUILD MANIFEST CONTRACT
+`BUILD_MANIFEST` is a lightweight deterministic trace of what codegen actually
+implemented. It must be a literal top-level dict with this shape:
+
+```python
+BUILD_MANIFEST = {
+    "component": COMPONENT_NAME,
+    "artifact_type": "single_part" | "assembly",
+    "features": [
+        {
+            "id": "feature_contract_id",
+            "host_part": "part_name",
+            "type": "through_hole",
+            "operation": "cut",
+            "axis": "Z",
+            "center_mm": [x, y, z],
+            "dimensions_mm": {"diameter": DIAMETER_PARAM, "depth": DEPTH_PARAM},
+            "count_group": "optional_group",
+            "required": True,
+        }
+    ],
+    "part_frames": [
+        {
+            "part": "part_name",
+            "center_mm": [x, y, z],
+            "bbox_mm": [length, width, height],
+        }
+    ],
+    "assembly_constraints": [
+        {
+            "id": "assembly_contract_id",
+            "type": "coaxial",
+            "parts": ["part_a", "part_b"],
+            "axes": ["Z"],
+            "feature_refs": ["feature_id_a", "feature_id_b"],
+            "target": "shared center x=0, y=0",
+            "tolerance_mm": 0.25,
+        }
+    ],
+}
+```
+
+Manifest rules:
+- Every geometry_plan.feature_contracts entry must appear in
+  `BUILD_MANIFEST["features"]` using the exact same id.
+- Every geometry_plan.assembly_contracts entry must appear in
+  `BUILD_MANIFEST["assembly_constraints"]` using the exact same id.
+- Use the same parameter constants and derived values for the actual geometry
+  and the manifest. Do not invent separate manifest-only numbers.
+- For pattern features, include one feature entry for the pattern id and put
+  `count`, spacing, diameter, and axis details in the dimensions dictionary.
+- For assemblies, include one `part_frames` entry for every child added to
+  cq.Assembly, using the actual world center and approximate bounding box.
+- For single parts with no spatial assembly relationships, keep
+  `assembly_constraints` as an empty list.
+- `validate_geometry(...)` must include `"build_manifest": BUILD_MANIFEST` in
+  its returned dictionary so downstream deterministic checks can consume it.
 
 REQUIRED MAIN BLOCK SHAPE
 For a single part:
@@ -204,7 +265,7 @@ IMPLEMENTATION RULES
 6. For assemblies, use explicit cq.Assembly names and loc= placements. Apply
    transforms in the geometry plan order.
    Treat assembly_axes, part_frames, assembly_placement_constraints,
-   alignment_groups, and forbidden_layouts as binding spatial contracts:
+   assembly_contracts, alignment_groups, and forbidden_layouts as binding spatial contracts:
    - Build each part in its declared local frame and place it at its declared
      world center.
    - Preserve functional face normals and mating face relationships.
@@ -214,6 +275,7 @@ IMPLEMENTATION RULES
      alignment_group on one coaxial line.
    - Do not place parts side-by-side, floating, or along a different axis when
      the contract says stacked or coaxial.
+   - Mirror every assembly_contract in BUILD_MANIFEST["assembly_constraints"].
 7. Return the correct type:
    - build_part: cq.Workplane
    - build_assembly: cq.Assembly
@@ -223,12 +285,18 @@ IMPLEMENTATION RULES
 9. Keep the script self-contained. Any helper functions must be defined in the
    script before use and must use only CadQuery or Python standard-library APIs.
 10. If Critic B patch instructions are present, make the smallest targeted
-   semantic correction that satisfies them. Do not ignore those instructions,
-   and do not introduce unrelated geometry changes.
+    semantic correction that satisfies them. Do not ignore those instructions,
+    and do not introduce unrelated geometry changes.
+11. Keep BUILD_MANIFEST consistent with the actual construction. If a feature is
+    changed, moved, removed, patched, or replanned, update the manifest entry in
+    the same response.
 
 VALIDATION AND EXPORT RULES
 - validate_geometry should perform cheap, robust checks that work in the
-  execution sandbox and return a dict of booleans/numbers.
+  execution sandbox and return a dict containing booleans/numbers plus the
+  build_manifest entry.
+- validate_geometry must include `"build_manifest": BUILD_MANIFEST` in the
+  returned dict.
 - validate_geometry must be side-effect-free: do not rebuild the model, do not
   export/save files, and do not modify geometry with cut, union, intersect,
   fillet, chamfer, shell, extrude, or loft.

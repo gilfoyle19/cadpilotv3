@@ -44,3 +44,9 @@ def test_format_readable_event_includes_validation_summary() -> None:
     assert "validation=success" in formatted
     assert "script=100 chars" in formatted
     assert "exports=1" in formatted
+
+
+def test_stream_script_initial_state_includes_contract_validation() -> None:
+    state = stream_pipeline.build_initial_state("Make a bracket.")
+
+    assert state["contract_validation"] == {}

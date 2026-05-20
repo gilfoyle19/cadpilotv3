@@ -48,6 +48,17 @@ class FakeAsyncPipelineNodes:
         }
         return state
 
+    async def acontract_validation_node(self, state):
+        self.calls.append("contract_validation_node")
+        state["contract_validation"] = SimpleNamespace(
+            status="pass",
+            passed=True,
+            failure_count=0,
+            warning_count=0,
+            compact_evidence=[],
+        )
+        return state
+
     async def arepair_agent(self, state):
         self.calls.append("repair_agent")
         return state
@@ -76,6 +87,7 @@ def _initial_state() -> dict:
         "parameters": {},
         "script": "",
         "validation": {},
+        "contract_validation": {},
         "critic_a_report": {},
         "critic_b_report": {},
         "repair_decision": None,
@@ -106,6 +118,7 @@ async def test_build_async_pipeline_supports_ainvoke(monkeypatch) -> None:
         "parameter_agent",
         "code_generation_infill_agent",
         "execution_validation_node",
+        "contract_validation_node",
         "critic_checkpoint_b",
         "export_summary_agent",
     ]

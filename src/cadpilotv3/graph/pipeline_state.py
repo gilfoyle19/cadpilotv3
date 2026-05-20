@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from cadpilotv3.schemas.contract_validation import ContractValidationReport
 from cadpilotv3.schemas.critic import (
     CriticBReport,
     CriticReport,
@@ -22,6 +23,7 @@ class PipelineState(TypedDict):
     parameters: ParameterSchema | dict
     script: str
     validation: ValidationReport | dict
+    contract_validation: ContractValidationReport | dict
 
     critic_a_report: CriticReport | dict
     critic_b_report: CriticBReport | dict

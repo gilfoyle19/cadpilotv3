@@ -26,10 +26,10 @@ def route_critic_a(
 
 def route_validation(
     state: PipelineState,
-) -> Literal["repair_agent", "critic_checkpoint_b"]:
+) -> Literal["repair_agent", "contract_validation_node"]:
     if state["validation"].repair_needed:
         return "repair_agent"
-    return "critic_checkpoint_b"
+    return "contract_validation_node"
 
 
 def route_repair(
@@ -38,13 +38,13 @@ def route_repair(
     "execution_validation_node",
     "code_generation_infill_agent",
     "geometry_planner_agent",
-    "critic_checkpoint_b",
+    "contract_validation_node",
 ]:
     decision = state["repair_decision"]
     max_attempts = get_settings().cad_max_repair_attempts
 
     if state["repair_count"] >= max_attempts:
-        return "critic_checkpoint_b"
+        return "contract_validation_node"
 
     if decision.action == "patch":
         return "execution_validation_node"
@@ -55,7 +55,7 @@ def route_repair(
     if decision.action == "replan":
         return "geometry_planner_agent"
 
-    return "critic_checkpoint_b"
+    return "contract_validation_node"
 
 
 def route_critic_b(

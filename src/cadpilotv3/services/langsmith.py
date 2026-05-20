@@ -71,6 +71,7 @@ def _pipeline_trace_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
             "export_files": outputs.get("export_files", []),
             "user_facing_warnings": outputs.get("user_facing_warnings", []),
             "validation": outputs.get("validation", {}),
+            "contract_validation": outputs.get("contract_validation", {}),
             "repair_count": outputs.get("repair_count"),
             "critic_a_attempts": outputs.get("critic_a_attempts"),
             "critic_b_attempts": outputs.get("critic_b_attempts"),

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -53,3 +55,5 @@ class ValidationReport(BaseModel):
     repair_needed: bool = False
     repair_complexity: str | None = None
     geometry_report: GeometryReport | None = None
+    build_manifest: dict[str, Any] | None = None
+    generated_validation: dict[str, Any] | None = None

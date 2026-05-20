@@ -6,7 +6,8 @@ import pytest
 from cadpilotv3.agents.code_generation_infill_agent import CodeGenerationInfillAgent
 from cadpilotv3.graph import routing
 from cadpilotv3.graph.nodes import PipelineNodes
-from cadpilotv3.graph.routing import route_repair
+from cadpilotv3.graph.routing import route_repair, route_validation
+from cadpilotv3.schemas.contract_validation import ContractValidationReport
 from cadpilotv3.services.code_generation_infill_service import (
     CodeGenerationInfillService,
     CodeGenerationOutputError,
@@ -19,10 +20,15 @@ def _valid_single_part_script() -> str:
     return "\n".join(
         [
             "import cadquery as cq",
+            "BUILD_MANIFEST = {",
+            "    'features': [],",
+            "    'part_frames': [],",
+            "    'assembly_constraints': [],",
+            "}",
             "def build_part():",
             "    return cq.Workplane('XY').box(1, 1, 1)",
             "def validate_geometry(model):",
-            "    return {}",
+            "    return {'build_manifest': BUILD_MANIFEST}",
             "def export_all(model, output_dir='.'):",
             "    return []",
             "if __name__ == '__main__':",
@@ -110,12 +116,14 @@ def test_critic_b_node_passes_geometry_plan_and_parameters() -> None:
 
     geometry_plan = object()
     parameters = object()
+    contract_validation = SimpleNamespace(status="pass", compact_evidence=[])
     state = {
         "user_prompt": "make a bracket",
         "spec": object(),
         "geometry_plan": geometry_plan,
         "parameters": parameters,
         "validation": object(),
+        "contract_validation": contract_validation,
         "critic_a_report": object(),
         "repair_count": 0,
     }
@@ -124,6 +132,41 @@ def test_critic_b_node_passes_geometry_plan_and_parameters() -> None:
 
     assert captured["geometry_plan"] is geometry_plan
     assert captured["parameters"] is parameters
+    assert captured["contract_validation"] is contract_validation
+
+
+def test_contract_validation_node_runs_before_critic_b() -> None:
+    captured = {}
+    report = ContractValidationReport(
+        status="fail",
+        passed=False,
+        summary="1 failed, 0 warned, 0 skipped, 1 total contract checks.",
+        failure_count=1,
+        compact_evidence=["fail:mount_hole:Required feature missing."],
+    )
+
+    class FakeContractValidationService:
+        def execute(self, **kwargs):
+            captured.update(kwargs)
+            return report
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.contract_validation_service = FakeContractValidationService()
+
+    geometry_plan = object()
+    validation = object()
+    state = {
+        "geometry_plan": geometry_plan,
+        "validation": validation,
+    }
+
+    result = nodes.contract_validation_node(state)
+
+    assert captured == {
+        "geometry_plan": geometry_plan,
+        "validation": validation,
+    }
+    assert result["contract_validation"] is report
 
 
 def test_repair_node_passes_and_records_repair_history() -> None:
@@ -234,6 +277,34 @@ def test_codegen_preflight_accepts_required_single_part_skeleton() -> None:
     service = object.__new__(CodeGenerationInfillService)
 
     service._validate_generated_code(_valid_single_part_script())
+
+
+def test_codegen_preflight_rejects_missing_build_manifest() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        (
+            "BUILD_MANIFEST = {\n"
+            "    'features': [],\n"
+            "    'part_frames': [],\n"
+            "    'assembly_constraints': [],\n"
+            "}\n"
+        ),
+        "",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="BUILD_MANIFEST"):
+        service._validate_generated_code(script)
+
+
+def test_codegen_preflight_rejects_validate_geometry_not_using_manifest() -> None:
+    service = object.__new__(CodeGenerationInfillService)
+    script = _valid_single_part_script().replace(
+        "    return {'build_manifest': BUILD_MANIFEST}",
+        "    return {'positive_volume': True}",
+    )
+
+    with pytest.raises(CodeGenerationOutputError, match="BUILD_MANIFEST"):
+        service._validate_generated_code(script)
 
 
 def test_codegen_preflight_rejects_script_not_starting_with_cadquery_import() -> None:
@@ -361,7 +432,7 @@ def test_codegen_preflight_rejects_throwing_validate_geometry(
 ) -> None:
     service = object.__new__(CodeGenerationInfillService)
     script = _valid_single_part_script().replace(
-        "def validate_geometry(model):\n    return {}",
+        "def validate_geometry(model):\n    return {'build_manifest': BUILD_MANIFEST}",
         f"def validate_geometry(model):\n{validation_body}",
     )
 
@@ -383,7 +454,7 @@ def test_codegen_preflight_rejects_side_effects_inside_validate_geometry(
 ) -> None:
     service = object.__new__(CodeGenerationInfillService)
     script = _valid_single_part_script().replace(
-        "def validate_geometry(model):\n    return {}",
+        "def validate_geometry(model):\n    return {'build_manifest': BUILD_MANIFEST}",
         f"def validate_geometry(model):\n{validation_body}",
     )
 
@@ -407,7 +478,7 @@ def test_codegen_preflight_rejects_brittle_validation_heuristic_keys(
 ) -> None:
     service = object.__new__(CodeGenerationInfillService)
     script = _valid_single_part_script().replace(
-        "def validate_geometry(model):\n    return {}",
+        "def validate_geometry(model):\n    return {'build_manifest': BUILD_MANIFEST}",
         f"def validate_geometry(model):\n    return {{{heuristic_key!r}: True}}",
     )
 
@@ -424,6 +495,18 @@ def test_apply_patch_raises_when_target_missing() -> None:
             affected_function="missing_function",
             patched_code="def missing_function():\n    return None\n",
         )
+
+
+def test_route_validation_sends_success_to_contract_validation() -> None:
+    state = {"validation": SimpleNamespace(repair_needed=False)}
+
+    assert route_validation(state) == "contract_validation_node"
+
+
+def test_route_validation_sends_repair_needed_to_repair() -> None:
+    state = {"validation": SimpleNamespace(repair_needed=True)}
+
+    assert route_validation(state) == "repair_agent"
 
 
 def test_route_repair_sends_regenerate_to_codegen() -> None:
@@ -446,7 +529,7 @@ def test_route_repair_stops_when_attempt_budget_is_exhausted(monkeypatch) -> Non
         "repair_count": 2,
     }
 
-    assert route_repair(state) == "critic_checkpoint_b"
+    assert route_repair(state) == "contract_validation_node"
 
 
 def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
@@ -458,22 +541,7 @@ def test_execute_script_retries_after_empty_generation(tmp_path) -> None:
             self.calls.append(kwargs)
             if len(self.calls) == 1:
                 return "```python\n\n```"
-            return "\n".join(
-                [
-                    "import cadquery as cq",
-                    "def build_part():",
-                    "    return cq.Workplane('XY').box(1, 1, 1)",
-                    "def validate_geometry(model):",
-                    "    return {}",
-                    "def export_all(model, output_dir='.'):",
-                    "    return []",
-                    "if __name__ == '__main__':",
-                    "    model = build_part()",
-                    "    validate_geometry(model)",
-                    "    export_all(model, '.')",
-                    "",
-                ]
-            )
+            return _valid_single_part_script()
 
     service = object.__new__(CodeGenerationInfillService)
     service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))
@@ -556,18 +624,8 @@ def test_codegen_uses_compact_retry_for_all_output_contract_failures(
 
 
 async def test_astream_script_yields_code_chunks_and_complete_event(tmp_path) -> None:
-    valid_chunks = [
-        "import cadquery as cq\n",
-        "def build_part():\n    return cq.Workplane('XY').box(1, 1, 1)\n",
-        "def validate_geometry(model):\n    return {}\n",
-        "def export_all(model, output_dir='.'): \n    return []\n",
-        (
-            "if __name__ == '__main__':\n"
-            "    model = build_part()\n"
-            "    validate_geometry(model)\n"
-            "    export_all(model, '.')\n"
-        ),
-    ]
+    valid_script = _valid_single_part_script()
+    valid_chunks = [f"{line}\n" for line in valid_script.splitlines()]
 
     class FakeAgent:
         async def astream(self, **kwargs):
@@ -600,11 +658,7 @@ async def test_astream_script_yields_code_chunks_and_complete_event(tmp_path) ->
 
     assert [event.event_type for event in events] == [
         "code_generation_start",
-        "code_chunk",
-        "code_chunk",
-        "code_chunk",
-        "code_chunk",
-        "code_chunk",
+        *(["code_chunk"] * len(valid_chunks)),
         "code_generation_complete",
     ]
     streamed_text = "".join(
@@ -638,22 +692,7 @@ async def test_astream_script_retries_after_empty_streamed_generation(tmp_path) 
                 )
                 return
 
-            text = "\n".join(
-                [
-                    "import cadquery as cq",
-                    "def build_part():",
-                    "    return cq.Workplane('XY').box(1, 1, 1)",
-                    "def validate_geometry(model):",
-                    "    return {}",
-                    "def export_all(model, output_dir='.'):",
-                    "    return []",
-                    "if __name__ == '__main__':",
-                    "    model = build_part()",
-                    "    validate_geometry(model)",
-                    "    export_all(model, '.')",
-                    "",
-                ]
-            )
+            text = _valid_single_part_script()
             yield LLMTextStreamChunk(text=text)
             yield LLMTextStreamChunk(
                 text="",
@@ -702,22 +741,7 @@ def test_execute_script_persists_raw_failed_codegen_response(tmp_path) -> None:
                     response_id="response-1",
                     raw_response_repr="<fake response>",
                 )
-            return "\n".join(
-                [
-                    "import cadquery as cq",
-                    "def build_part():",
-                    "    return cq.Workplane('XY').box(1, 1, 1)",
-                    "def validate_geometry(model):",
-                    "    return {}",
-                    "def export_all(model, output_dir='.'):",
-                    "    return []",
-                    "if __name__ == '__main__':",
-                    "    model = build_part()",
-                    "    validate_geometry(model)",
-                    "    export_all(model, '.')",
-                    "",
-                ]
-            )
+            return _valid_single_part_script()
 
     service = object.__new__(CodeGenerationInfillService)
     service.settings = SimpleNamespace(cad_artifacts_dir=str(tmp_path))

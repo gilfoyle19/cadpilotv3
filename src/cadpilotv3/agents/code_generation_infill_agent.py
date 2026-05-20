@@ -245,6 +245,8 @@ class CodeGenerationInfillAgent:
                 ),
                 (
                     "The script must define build_part() or build_assembly(), "
+                    "a top-level BUILD_MANIFEST dictionary with features, "
+                    "part_frames, and assembly_constraints lists, "
                     "validate_geometry(...), export_all(...), and an "
                     "if __name__ == '__main__': export block that assigns the "
                     "built object to global model or assembly, calls "
@@ -257,7 +259,10 @@ class CodeGenerationInfillAgent:
                     "validate_geometry may check bounding boxes, part counts, "
                     "and positive final volume. It must return a dict, must not "
                     "raise/assert, and must not rebuild, export, save, or modify "
-                    "geometry. Do not use heuristic global volume_reasonable, "
+                    "geometry. It must include BUILD_MANIFEST in the returned "
+                    "dict under the build_manifest key, with other checks as "
+                    "booleans or simple numbers. Do not use heuristic global "
+                    "volume_reasonable, "
                     "expected_bounding_box, dimensions_match, volume_ratio, or "
                     "expected-volume threshold checks. For required subtractive "
                     "features, use operation-local before/after checks near the "
@@ -313,7 +318,10 @@ class CodeGenerationInfillAgent:
                     "Skeleton contract overrides older examples: final output "
                     "must start with `import cadquery as cq`, define exactly "
                     "one of build_part() or build_assembly(), define "
-                    "validate_geometry(...) and export_all(...), and the "
+                    "a top-level BUILD_MANIFEST dictionary with features, "
+                    "part_frames, and assembly_constraints lists, define "
+                    "validate_geometry(...) and export_all(...), include "
+                    "BUILD_MANIFEST in the validation dictionary, and the "
                     "__main__ block must build, validate, then call export_all."
                 ),
                 *selected,

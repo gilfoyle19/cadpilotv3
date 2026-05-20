@@ -51,6 +51,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity="patch",
                 geometry_report=None,
+                **self._artifact_validation_payload(artifacts),
             )
 
         if not artifacts.execution_succeeded:
@@ -77,6 +78,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity=repair_complexity,
                 geometry_report=None,
+                **self._artifact_validation_payload(artifacts),
             )
 
         if artifacts.geometry_report is None:
@@ -98,6 +100,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity="replan",
                 geometry_report=None,
+                **self._artifact_validation_payload(artifacts),
             )
 
         geometry = artifacts.geometry_report
@@ -121,6 +124,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity="replan",
                 geometry_report=self._geometry_report_payload(geometry),
+                **self._artifact_validation_payload(artifacts),
             )
 
         if not geometry.is_manifold:
@@ -142,6 +146,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity="replan",
                 geometry_report=self._geometry_report_payload(geometry),
+                **self._artifact_validation_payload(artifacts),
             )
 
         if not geometry.assembly_valid:
@@ -163,6 +168,7 @@ class ExecutionValidationAgent:
                 repair_needed=True,
                 repair_complexity="replan",
                 geometry_report=self._geometry_report_payload(geometry),
+                **self._artifact_validation_payload(artifacts),
             )
 
         return ValidationReport(
@@ -180,6 +186,7 @@ class ExecutionValidationAgent:
             repair_needed=False,
             repair_complexity=None,
             geometry_report=self._geometry_report_payload(geometry),
+            **self._artifact_validation_payload(artifacts),
         )
 
     async def arun(
@@ -206,6 +213,12 @@ class ExecutionValidationAgent:
                 }
                 for child in (geometry.child_metadata or [])
             ],
+        }
+
+    def _artifact_validation_payload(self, artifacts: SandboxExecutionArtifacts) -> dict:
+        return {
+            "build_manifest": artifacts.build_manifest,
+            "generated_validation": artifacts.generated_validation,
         }
 
     def _map_error_class(

@@ -18,8 +18,13 @@ from cadpilotv3.shared import clear_llm_trace, configure_llm_trace
 logger = logging.getLogger(__name__)
 
 DEFAULT_USER_PROMPT = (
-    "Create a single-part FDM-printable cable clamp block in CadQuery using millimeters and exporting STEP. The part should be a rectangular block about 50 mm long, 24 mm wide, and 12 mm tall, with a centered semicircular cable channel running along its length for a 10 mm diameter cable. Add two M4 clearance through-holes, one near each end, so the block can be screwed down to a surface. Keep it as one solid printable part with no lid, no assembly, and no moving features."
-
+    "Create a single-part FDM-printable cable clamp block in CadQuery using "
+    "millimeters and exporting STEP. The part should be a rectangular block "
+    "about 50 mm long, 24 mm wide, and 12 mm tall, with a centered semicircular "
+    "cable channel running along its length for a 10 mm diameter cable. Add two "
+    "M4 clearance through-holes, one near each end, so the block can be screwed "
+    "down to a surface. Keep it as one solid printable part with no lid, no "
+    "assembly, and no moving features."
 )
 
 
@@ -50,6 +55,7 @@ def build_initial_state(user_prompt: str) -> PipelineState:
         "script": "",
 
         "validation": {},
+        "contract_validation": {},
         "critic_a_report": {},
         "critic_b_report": {},
 

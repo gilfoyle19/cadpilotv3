@@ -20,6 +20,7 @@ def test_codegen_prompts_standardize_single_part_entrypoint() -> None:
     assert "model = make_" not in skeleton_examples
     assert "def build_part() -> cq.Workplane:" in infill_examples
     assert "def build_assembly() -> cq.Assembly:" in infill_examples
+    assert "BUILD_MANIFEST" in infill_examples
 
 
 def test_codegen_and_repair_prompts_forbid_implicit_hole_helpers() -> None:
@@ -74,6 +75,10 @@ def test_codegen_prompt_defines_strict_script_skeleton() -> None:
     assert "validate_geometry(assembly)" in system_prompt
     assert "export_all(assembly, \"./output\")" in system_prompt
     assert "do not call exporters.export" in system_prompt
+    assert "BUILD_MANIFEST" in system_prompt
+    assert "features" in system_prompt
+    assert "part_frames" in system_prompt
+    assert "assembly_constraints" in system_prompt
 
 
 def test_codegen_prompt_makes_generated_validation_robust() -> None:
@@ -90,6 +95,7 @@ def test_codegen_prompt_makes_generated_validation_robust() -> None:
     assert "volume_ratio" in system_prompt
     assert "operation-local before/after" in system_prompt
     assert "checks near the cut operation" in system_prompt
+    assert '"build_manifest": BUILD_MANIFEST' in system_prompt
 
 
 def test_critic_b_prompt_uses_child_metadata_for_spatial_fidelity() -> None:
@@ -104,8 +110,11 @@ def test_critic_b_prompt_uses_child_metadata_for_spatial_fidelity() -> None:
     assert "center_mm" in critic_b_prompt
     assert "stacked parts accidentally side-by-side" in critic_b_prompt.lower()
     assert "coaxial fasteners/spacers" in critic_b_prompt.lower()
+    assert "Deterministic contract validation report" in critic_b_prompt
+    assert "compact_evidence" in critic_b_prompt
     assert "Side-by-Side Parts That Should Be Stacked" in critic_b_examples
     assert "base center [0,0,15] and lid center [105,0,1.5]" in critic_b_examples
+    assert "contract_validation_report" in critic_b_examples
 
 
 def test_codegen_and_critic_prompts_use_face_axis_contracts() -> None:
@@ -123,5 +132,6 @@ def test_codegen_and_critic_prompts_use_face_axis_contracts() -> None:
         assert "alignment_groups" in prompt
         assert "forbidden_layouts" in prompt
 
+    assert "assembly_contracts" in codegen_prompt
     assert "binding spatial contracts" in codegen_prompt
     assert "Planned face-axis contract" in critic_b_prompt

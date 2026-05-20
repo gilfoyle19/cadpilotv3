@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CoordinateConvention(BaseModel):
@@ -42,6 +42,23 @@ class KeyFeature(BaseModel):
 
     feature: str
     description: str
+
+
+class FeatureContract(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    id: str
+    host_part: str
+    type: str
+    operation: str | None = None
+    axis: str | None = None
+    center: list[str | float | int] | str | None = None
+    dimensions: dict[str, str | float | int | None] = Field(default_factory=dict)
+    count_group: str | None = None
+    required: bool = True
+    description: str | None = None
 
 
 class PlannedPart(BaseModel):
@@ -101,6 +118,21 @@ class AssemblyPlacementConstraint(BaseModel):
     name: str
     constraint_type: str
     parts: list[str] = Field(default_factory=list)
+    description: str
+
+
+class AssemblyContract(BaseModel):
+    model_config = {
+        "extra": "ignore",
+    }
+
+    id: str
+    type: str
+    parts: list[str] = Field(default_factory=list)
+    axes: list[str] = Field(default_factory=list)
+    feature_refs: list[str] = Field(default_factory=list)
+    target: str | float | int | None = None
+    tolerance_mm: float | None = None
     description: str
 
 
@@ -172,15 +204,26 @@ class GeometryPlan(BaseModel):
     coordinate_convention: CoordinateConvention | None = None
 
     parts: list[PlannedPart] = Field(default_factory=list)
+    required_features: list[str] = Field(default_factory=list)
+    feature_contracts: list[FeatureContract] = Field(default_factory=list)
     subassemblies: list[str] = Field(default_factory=list)
     assembly_axes: AssemblyAxisContract | None = None
     part_frames: list[PartFrame] = Field(default_factory=list)
     assembly_placement_constraints: list[AssemblyPlacementConstraint] = Field(
         default_factory=list
     )
+    assembly_contracts: list[AssemblyContract] = Field(default_factory=list)
     alignment_groups: list[AlignmentGroup] = Field(default_factory=list)
     forbidden_layouts: list[str] = Field(default_factory=list)
     assembly_transform_chain: list[TransformChain] = Field(default_factory=list)
     joint_definitions: list[JointDefinition] = Field(default_factory=list)
     interfaces: list[InterfaceDefinition] = Field(default_factory=list)
     failure_risks: list[FailureRisk] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def populate_required_features(self) -> "GeometryPlan":
+        if not self.required_features and self.feature_contracts:
+            self.required_features = [
+                contract.id for contract in self.feature_contracts if contract.required
+            ]
+        return self

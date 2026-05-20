@@ -260,6 +260,7 @@ def _summarize_final_state(state: Mapping[str, Any] | None) -> dict[str, Any]:
             "export_files": state.get("export_files", []),
             "user_facing_warnings": state.get("user_facing_warnings", []),
             "validation": state.get("validation", {}),
+            "contract_validation": state.get("contract_validation", {}),
             "assembly_report_markdown": state.get("assembly_report_markdown", ""),
         },
     }
@@ -267,6 +268,7 @@ def _summarize_final_state(state: Mapping[str, Any] | None) -> dict[str, Any]:
 
 def _summarize_state(state: Mapping[str, Any]) -> dict[str, Any]:
     validation = state.get("validation")
+    contract_validation = state.get("contract_validation")
     critic_a_report = state.get("critic_a_report")
     critic_b_report = state.get("critic_b_report")
 
@@ -276,6 +278,12 @@ def _summarize_state(state: Mapping[str, Any]) -> dict[str, Any]:
         "has_parameters": bool(state.get("parameters")),
         "script_length_chars": len(state.get("script") or ""),
         "validation_status": getattr(validation, "status", None),
+        "contract_validation_status": getattr(contract_validation, "status", None),
+        "contract_validation_failures": getattr(
+            contract_validation,
+            "failure_count",
+            None,
+        ),
         "repair_needed": getattr(validation, "repair_needed", None),
         "critic_a_routing": getattr(critic_a_report, "routing", None),
         "critic_b_routing": getattr(critic_b_report, "routing", None),
