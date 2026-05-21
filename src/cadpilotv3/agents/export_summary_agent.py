@@ -23,6 +23,7 @@ from cadpilotv3.shared import (
     strip_code_fences,
 )
 from cadpilotv3.shared.llm_trace import update_llm_trace
+from cadpilotv3.shared.prompt_context import select_relevant_few_shot_examples
 
 
 class ExportSummaryAgent:
@@ -107,6 +108,15 @@ class ExportSummaryAgent:
             self.settings,
             "export_summary_examples.md",
         )
+        selected_examples = self._select_relevant_examples(
+            few_shot_prompt=few_shot_prompt,
+            user_prompt=user_prompt,
+            spec=spec,
+            parameters=parameters,
+            validation=validation,
+            critic_b_report=critic_b_report,
+            export_files=export_files,
+        )
 
         export_files_json = [
             export_file.model_dump()
@@ -116,7 +126,7 @@ class ExportSummaryAgent:
         prompt = "\n\n".join(
             [
                 system_prompt.strip(),
-                few_shot_prompt.strip(),
+                selected_examples.strip(),
                 "Original user prompt:",
                 user_prompt.strip(),
                 "Structured spec:",
@@ -132,6 +142,75 @@ class ExportSummaryAgent:
             ]
         )
         return prompt
+
+    def _select_relevant_examples(
+        self,
+        *,
+        few_shot_prompt: str,
+        user_prompt: str,
+        spec: IntentSpec,
+        parameters: ParameterSchema,
+        validation: ValidationReport,
+        critic_b_report: CriticBReport,
+        export_files: list[ExportedFile],
+        max_examples: int = 1,
+    ) -> str:
+        query_values: list[object] = [
+            user_prompt,
+            getattr(spec, "component", "") or "",
+            getattr(spec, "component_type", "") or "",
+            getattr(spec, "style", "") or "",
+            getattr(spec, "manufacturing_process", "") or "",
+            getattr(spec, "parts", []) or [],
+            getattr(spec, "constraints", []) or [],
+            getattr(validation, "status", "") or "",
+            getattr(validation, "error_class", "") or "",
+            getattr(critic_b_report, "routing", "") or "",
+            getattr(critic_b_report, "user_facing_warnings", []) or [],
+        ]
+
+        geometry_report = getattr(validation, "geometry_report", None)
+        query_values.extend(
+            [
+                getattr(geometry_report, "part_count", "") or "",
+                getattr(geometry_report, "bounding_box_mm", "") or "",
+            ]
+        )
+        for child in getattr(geometry_report, "child_metadata", []) or []:
+            query_values.extend(
+                [
+                    getattr(child, "name", "") or "",
+                    getattr(child, "bounding_box_mm", "") or "",
+                    getattr(child, "volume_mm3", "") or "",
+                ]
+            )
+
+        for name, parameter in (getattr(parameters, "parameters", {}) or {}).items():
+            query_values.extend(
+                [
+                    name,
+                    getattr(parameter, "name", "") or "",
+                    getattr(parameter, "description", "") or "",
+                    getattr(parameter, "constraint", "") or "",
+                    getattr(parameter, "derived_from", "") or "",
+                ]
+            )
+
+        for export_file in export_files:
+            query_values.extend(
+                [
+                    getattr(export_file, "format", "") or "",
+                    getattr(export_file, "filename", "") or "",
+                    getattr(export_file, "contents", "") or "",
+                ]
+            )
+
+        return select_relevant_few_shot_examples(
+            few_shot_prompt=few_shot_prompt,
+            query_values=query_values,
+            heading="## Selected Export Summary Few-Shots",
+            max_examples=max_examples,
+        )
 
     def _parse_result(
         self,
