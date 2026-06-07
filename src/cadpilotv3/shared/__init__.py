@@ -31,6 +31,7 @@ from cadpilotv3.shared.path_utils import (
 )
 from cadpilotv3.shared.prompt_utils import (
     PromptNotFoundError,
+    clear_prompt_cache,
     get_prompt_path,
     load_prompt_text,
     render_prompt,
@@ -58,6 +59,7 @@ __all__ = [
     "invoke_text_with_metadata",
     "clear_llm_trace",
     "configure_llm_trace",
+    "clear_prompt_cache",
     "ensure_dir",
     "get_artifacts_dir",
     "get_logs_dir",
