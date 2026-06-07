@@ -6,7 +6,12 @@ import pytest
 from cadpilotv3.agents.code_generation_infill_agent import CodeGenerationInfillAgent
 from cadpilotv3.graph import routing
 from cadpilotv3.graph.nodes import PipelineNodes
-from cadpilotv3.graph.routing import route_repair, route_validation
+from cadpilotv3.graph.routing import (
+    route_critic_a,
+    route_critic_b,
+    route_repair,
+    route_validation,
+)
 from cadpilotv3.schemas.contract_validation import ContractValidationReport
 from cadpilotv3.services.code_generation_infill_service import (
     CodeGenerationInfillService,
@@ -509,6 +514,88 @@ def test_route_validation_sends_repair_needed_to_repair() -> None:
     assert route_validation(state) == "repair_agent"
 
 
+def test_route_critic_a_replans_when_attempt_budget_remains(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_a_attempts=2),
+    )
+    state = {
+        "critic_a_report": SimpleNamespace(
+            verdict="fail",
+            routing="replan",
+            issues=[],
+        ),
+        "critic_a_attempts": 1,
+        "user_facing_warnings": [],
+    }
+
+    assert route_critic_a(state) == "geometry_planner_agent"
+    assert state["user_facing_warnings"] == []
+
+
+def test_route_critic_a_stops_when_attempt_budget_is_exhausted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_a_attempts=2),
+    )
+    state = {
+        "critic_a_report": SimpleNamespace(
+            verdict="fail",
+            routing="replan",
+            issues=[SimpleNamespace(description="Plan is missing the mounting holes.")],
+        ),
+        "critic_a_attempts": 2,
+        "user_facing_warnings": [],
+    }
+
+    assert route_critic_a(state) == "parameter_agent"
+    assert state["user_facing_warnings"] == [
+        "Plan is missing the mounting holes.",
+    ]
+
+
+def test_route_critic_b_patches_when_attempt_budget_remains(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_b_attempts=2),
+    )
+    state = {
+        "critic_b_report": SimpleNamespace(
+            routing="patch",
+            issues=[],
+        ),
+        "critic_b_attempts": 1,
+        "user_facing_warnings": [],
+    }
+
+    assert route_critic_b(state) == "code_generation_infill_agent"
+    assert state["user_facing_warnings"] == []
+
+
+def test_route_critic_b_stops_when_attempt_budget_is_exhausted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_b_attempts=2),
+    )
+    state = {
+        "critic_b_report": SimpleNamespace(
+            routing="replan",
+            issues=[SimpleNamespace(description="Final part violates the requested scale.")],
+        ),
+        "critic_b_attempts": 2,
+        "user_facing_warnings": [],
+    }
+
+    assert route_critic_b(state) == "export_summary_agent"
+    assert state["user_facing_warnings"] == [
+        "Final part violates the requested scale.",
+    ]
+
+
 def test_route_repair_sends_regenerate_to_codegen() -> None:
     state = {
         "repair_decision": SimpleNamespace(action="regenerate"),
@@ -530,6 +617,20 @@ def test_route_repair_stops_when_attempt_budget_is_exhausted(monkeypatch) -> Non
     }
 
     assert route_repair(state) == "contract_validation_node"
+
+
+def test_route_repair_patches_when_attempt_budget_remains(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_repair_attempts=2),
+    )
+    state = {
+        "repair_decision": SimpleNamespace(action="patch"),
+        "repair_count": 1,
+    }
+
+    assert route_repair(state) == "execution_validation_node"
 
 
 def test_execute_script_retries_after_empty_generation(tmp_path) -> None:

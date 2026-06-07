@@ -15,7 +15,7 @@ def route_critic_a(
     if report.verdict == "pass" or report.routing == "proceed":
         return "parameter_agent"
 
-    if state["critic_a_attempts"] > max_attempts:
+    if state["critic_a_attempts"] >= max_attempts:
         state["user_facing_warnings"].extend(
             [issue.description for issue in getattr(report, "issues", [])]
         )
@@ -71,7 +71,7 @@ def route_critic_b(
     if report.routing == "export":
         return "export_summary_agent"
 
-    if state["critic_b_attempts"] > max_attempts:
+    if state["critic_b_attempts"] >= max_attempts:
         state["user_facing_warnings"].extend(
             [issue.description for issue in getattr(report, "issues", [])]
         )
