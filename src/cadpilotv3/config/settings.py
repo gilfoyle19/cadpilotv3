@@ -64,6 +64,10 @@ class AppSettings(BaseSettings):
     cad_prompt_dir: str = "src/cadpilotv3/prompts"
     cad_enable_async: bool = True
     cad_enable_streaming: bool = True
+    cad_enable_design_synthesis: bool = False
+    cad_enable_conditional_critic_b: bool = False
+    cad_enable_llm_export_summary: bool = True
+    cad_enable_direct_repair_codegen: bool = False
 
     exec_sandbox_enabled: bool = True
     exec_cadquery_python_bin: str = "python"
