@@ -1,749 +1,509 @@
-import cadquery as cq
+
 import math
-import os
-from cadquery import exporters
+import cadquery as cq
 
-COMPONENT_NAME = "adjustable_phone_tablet_stand"
+# All dimensions are in mm
 
-BASE_PLATE_W = 170.0
-BASE_PLATE_D = 170.0
-BASE_PLATE_T = 10.0
-BASE_BOLT_N = 4.0
-BASE_BOLT_R = 65.0
-M6_CLEARANCE_D = 6.6
-ALIGN_PIN_N = 2.0
-ALIGN_PIN_D = 8.0
-ALIGN_PIN_H = 6.0
-COLUMN_W = 40.0
-COLUMN_D = 40.0
-COLUMN_H = 400.0
-COLUMN_WALL_T = 3.0
-JOINT_BOSS_D = 18.0
-JOINT_BOSS_L = 20.0
-JOINT_PIN_D = 8.0
-JOINT_PIN_L = 44.0
-JOINT_CLEARANCE = 0.3
-LOWER_ARM_L = 170.0
-LOWER_ARM_W = 30.0
-LOWER_ARM_H = 20.0
-UPPER_ARM_L = 170.0
-UPPER_ARM_W = 30.0
-UPPER_ARM_H = 20.0
-TILT_PIN_D = 8.0
-TILT_PIN_L = 44.0
-TILT_BOSS_L = 20.0
-HOLDER_W = 120.0
-HOLDER_H = 40.0
-HOLDER_T = 15.0
-JAW_SLOT_W = 12.0
-JAW_SLOT_L = 30.0
-JAW_W = 10.0
-JAW_L = 28.0
-JAW_H = 40.0
-JAW_OFFSET_X = 40.0
-JAW_PAD_W = 20.0
-JAW_PAD_H = 30.0
-JAW_PAD_T = 4.0
-JAW_PIN_D = 5.0
-JAW_PIN_L = 12.0
-SPRING_D = 8.0
-SPRING_L = 30.0
+finger_name = "robotic_finger_kinematic_assembly"
+
+link_width = 18.0
+link_thickness = 8.0
+
+proximal_length = 52.0
+middle_length = 42.0
+distal_length = 32.0
+
+joint_pin_diameter = 5.0
+joint_bushing_diameter = 8.5
+joint_washer_diameter = 12.0
+joint_clearance = 0.35
+
+mount_length = 42.0
+mount_width = 36.0
+mount_height = 18.0
+
+clevis_plate_thickness = 4.0
+clevis_plate_gap = link_width + 1.2
+clevis_length = 20.0
+clevis_height = 18.0
+
+pin_overhang = 5.0
+washer_thickness = 1.2
+bushing_length = link_width + 0.8
+
+pulley_diameter = 11.0
+pulley_width = 4.0
+tendon_diameter = 1.6
+
+screw_diameter = 3.2
+screw_head_diameter = 6.2
+screw_head_height = 2.2
+
+small_chamfer = 0.45
+
+proximal_angle = 22.0
+middle_angle = 34.0
+distal_angle = 26.0
 
 CUT_EPS = 0.2
-EDGE_CHAMFER = 1.0
-ARM_BORE_D = JOINT_PIN_D + JOINT_CLEARANCE
-TILT_BORE_D = TILT_PIN_D + JOINT_CLEARANCE
-ALIGN_PIN_OFFSET_X = 12.0
-ALIGN_PIN_OFFSET_Y = 0.0
-COLUMN_TOP_Z = COLUMN_H
-BASE_TOP_Z = BASE_PLATE_T
-COLUMN_WORLD_CENTER_Z = COLUMN_H / 2.0
-LOWER_ARM_WORLD_CENTER_Z = COLUMN_H
-UPPER_ARM_WORLD_CENTER_Z = COLUMN_H + LOWER_ARM_L
-HOLDER_WORLD_CENTER_Z = COLUMN_H + LOWER_ARM_L + UPPER_ARM_L
-HOLDER_SLOT_CENTER_Z = HOLDER_H / 2.0
-HOLDER_SLOT_CENTER_Y = (HOLDER_T - JAW_SLOT_L) / 2.0
-JAW_BORE_Z = JAW_H / 2.0
-JAW_PAD_Z = JAW_H / 2.0
-FASTENER_BODY_D = 6.0
-FASTENER_BODY_L = BASE_PLATE_T + 16.0
-
-BUILD_MANIFEST = {
-    "component": COMPONENT_NAME,
-    "artifact_type": "assembly",
-    "features": [
-        {
-            "id": "base_bolt_pattern",
-            "host_part": "base_plate",
-            "type": "pattern",
-            "operation": "cut",
-            "axis": "Z",
-            "center_mm": [0.0, 0.0, BASE_PLATE_T / 2.0],
-            "dimensions_mm": {
-                "count": int(BASE_BOLT_N),
-                "diameter": M6_CLEARANCE_D,
-                "pattern_radius": BASE_BOLT_R,
-                "depth": BASE_PLATE_T + 2 * CUT_EPS,
-            },
-            "count_group": "base_bolt_pattern",
-            "required": True,
-        },
-        {
-            "id": "base_alignment_pins",
-            "host_part": "base_plate",
-            "type": "boss",
-            "operation": "add",
-            "axis": "Z",
-            "center_mm": [0.0, 0.0, BASE_PLATE_T + ALIGN_PIN_H / 2.0],
-            "dimensions_mm": {
-                "count": int(ALIGN_PIN_N),
-                "diameter": ALIGN_PIN_D,
-                "height": ALIGN_PIN_H,
-                "offset_x": ALIGN_PIN_OFFSET_X,
-                "offset_y": ALIGN_PIN_OFFSET_Y,
-            },
-            "count_group": "base_alignment_pins",
-            "required": True,
-        },
-        {
-            "id": "column_base_mount_bore",
-            "host_part": "vertical_support_column",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Z",
-            "center_mm": [0.0, 0.0, ALIGN_PIN_H / 2.0],
-            "dimensions_mm": {
-                "diameter": ALIGN_PIN_D,
-                "depth": ALIGN_PIN_H,
-                "count": int(ALIGN_PIN_N),
-                "offset_x": ALIGN_PIN_OFFSET_X,
-                "offset_y": ALIGN_PIN_OFFSET_Y,
-            },
-            "count_group": "base_alignment_pins",
-            "required": True,
-        },
-        {
-            "id": "column_lower_arm_joint_boss",
-            "host_part": "vertical_support_column",
-            "type": "boss",
-            "operation": "add",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, COLUMN_TOP_Z],
-            "dimensions_mm": {
-                "diameter": JOINT_BOSS_D,
-                "length": JOINT_BOSS_L,
-            },
-            "count_group": "column_lower_arm_joint",
-            "required": True,
-        },
-        {
-            "id": "lower_arm_base_joint_bore",
-            "host_part": "lower_arm_segment",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, 0.0],
-            "dimensions_mm": {
-                "diameter": ARM_BORE_D,
-                "depth": JOINT_BOSS_L,
-            },
-            "count_group": "column_lower_arm_joint",
-            "required": True,
-        },
-        {
-            "id": "lower_arm_upper_joint_bore",
-            "host_part": "lower_arm_segment",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, LOWER_ARM_L],
-            "dimensions_mm": {
-                "diameter": ARM_BORE_D,
-                "depth": JOINT_BOSS_L,
-            },
-            "count_group": "lower_upper_arm_joint",
-            "required": True,
-        },
-        {
-            "id": "upper_arm_lower_joint_bore",
-            "host_part": "upper_arm_segment",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, 0.0],
-            "dimensions_mm": {
-                "diameter": ARM_BORE_D,
-                "depth": JOINT_BOSS_L,
-            },
-            "count_group": "lower_upper_arm_joint",
-            "required": True,
-        },
-        {
-            "id": "upper_arm_holder_joint_bore",
-            "host_part": "upper_arm_segment",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, UPPER_ARM_L],
-            "dimensions_mm": {
-                "diameter": TILT_BORE_D,
-                "depth": TILT_BOSS_L,
-            },
-            "count_group": "upper_arm_holder_joint",
-            "required": True,
-        },
-        {
-            "id": "arm_hinge_joint_pins",
-            "host_part": "arm_hinge_joints",
-            "type": "fastener",
-            "operation": "add",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, COLUMN_H + LOWER_ARM_L / 2.0],
-            "dimensions_mm": {
-                "count": 2,
-                "diameter": JOINT_PIN_D,
-                "length": JOINT_PIN_L,
-            },
-            "count_group": "arm_hinge_joints",
-            "required": True,
-        },
-        {
-            "id": "holder_tilt_joint_pin",
-            "host_part": "holder_tilt_joint",
-            "type": "fastener",
-            "operation": "add",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, 0.0],
-            "dimensions_mm": {
-                "diameter": TILT_PIN_D,
-                "length": TILT_PIN_L,
-            },
-            "count_group": "holder_tilt_joint",
-            "required": True,
-        },
-        {
-            "id": "holder_tilt_joint_bore",
-            "host_part": "device_holder",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, 0.0],
-            "dimensions_mm": {
-                "diameter": TILT_BORE_D,
-                "depth": TILT_BOSS_L,
-            },
-            "count_group": "holder_tilt_joint",
-            "required": True,
-        },
-        {
-            "id": "holder_jaw_slots",
-            "host_part": "device_holder",
-            "type": "slot",
-            "operation": "cut",
-            "axis": "X",
-            "center_mm": [0.0, HOLDER_SLOT_CENTER_Y, HOLDER_SLOT_CENTER_Z],
-            "dimensions_mm": {
-                "count": 2,
-                "width": JAW_SLOT_W,
-                "length": JAW_SLOT_L,
-                "offset_x": JAW_OFFSET_X,
-                "depth": HOLDER_T,
-            },
-            "count_group": "holder_jaw_slots",
-            "required": True,
-        },
-        {
-            "id": "jaw_contact_pads",
-            "host_part": "device_gripper_jaws",
-            "type": "pad",
-            "operation": "add",
-            "axis": "Y",
-            "center_mm": [0.0, JAW_L + JAW_PAD_T / 2.0, JAW_PAD_Z],
-            "dimensions_mm": {
-                "count": 2,
-                "width": JAW_PAD_W,
-                "height": JAW_PAD_H,
-                "thickness": JAW_PAD_T,
-            },
-            "count_group": "jaw_contact_pads",
-            "required": True,
-        },
-        {
-            "id": "jaw_slide_or_pivot_bores",
-            "host_part": "device_gripper_jaws",
-            "type": "bore",
-            "operation": "cut",
-            "axis": "X",
-            "center_mm": [0.0, JAW_L / 2.0, JAW_BORE_Z],
-            "dimensions_mm": {
-                "diameter": JAW_PIN_D,
-                "depth": JAW_PIN_L,
-                "count": 2,
-            },
-            "count_group": "jaw_slide_or_pivot_bores",
-            "required": True,
-        },
-        {
-            "id": "jaw_spring_or_screw_body",
-            "host_part": "jaw_spring_or_screw",
-            "type": "fastener",
-            "operation": "add",
-            "axis": "Y",
-            "center_mm": [0.0, 0.0, HOLDER_WORLD_CENTER_Z + HOLDER_H / 2.0],
-            "dimensions_mm": {
-                "diameter": SPRING_D,
-                "length": SPRING_L,
-            },
-            "count_group": "jaw_spring_or_screw",
-            "required": True,
-        },
-        {
-            "id": "fastener_bodies",
-            "host_part": "fasteners",
-            "type": "fastener",
-            "operation": "add",
-            "axis": None,
-            "center_mm": [0.0, 0.0, BASE_PLATE_T / 2.0],
-            "dimensions_mm": {
-                "varies": 1.0,
-                "count": int(BASE_BOLT_N),
-                "body_diameter": FASTENER_BODY_D,
-                "body_length": FASTENER_BODY_L,
-            },
-            "count_group": "all_fasteners",
-            "required": True,
-        },
-    ],
-    "part_frames": [
-        {
-            "part": "base_plate",
-            "center_mm": [0.0, 0.0, BASE_PLATE_T / 2.0],
-            "bbox_mm": [BASE_PLATE_W, BASE_PLATE_D, BASE_PLATE_T + ALIGN_PIN_H],
-        },
-        {
-            "part": "vertical_support_column",
-            "center_mm": [0.0, 0.0, COLUMN_WORLD_CENTER_Z],
-            "bbox_mm": [COLUMN_W, COLUMN_D + JOINT_BOSS_L, COLUMN_H],
-        },
-        {
-            "part": "lower_arm_segment",
-            "center_mm": [0.0, 0.0, LOWER_ARM_WORLD_CENTER_Z + LOWER_ARM_L / 2.0],
-            "bbox_mm": [LOWER_ARM_W, LOWER_ARM_W, LOWER_ARM_L + LOWER_ARM_H],
-        },
-        {
-            "part": "upper_arm_segment",
-            "center_mm": [0.0, 0.0, UPPER_ARM_WORLD_CENTER_Z + UPPER_ARM_L / 2.0],
-            "bbox_mm": [UPPER_ARM_W, UPPER_ARM_W, UPPER_ARM_L + UPPER_ARM_H],
-        },
-        {
-            "part": "device_holder",
-            "center_mm": [0.0, 0.0, HOLDER_WORLD_CENTER_Z + HOLDER_H / 2.0],
-            "bbox_mm": [HOLDER_W, HOLDER_T, HOLDER_H],
-        },
-        {
-            "part": "jaw_left",
-            "center_mm": [-JAW_OFFSET_X, HOLDER_SLOT_CENTER_Y + JAW_L / 2.0, HOLDER_WORLD_CENTER_Z + JAW_H / 2.0],
-            "bbox_mm": [JAW_W, JAW_L + JAW_PAD_T, JAW_H],
-        },
-        {
-            "part": "jaw_right",
-            "center_mm": [JAW_OFFSET_X, HOLDER_SLOT_CENTER_Y + JAW_L / 2.0, HOLDER_WORLD_CENTER_Z + JAW_H / 2.0],
-            "bbox_mm": [JAW_W, JAW_L + JAW_PAD_T, JAW_H],
-        },
-        {
-            "part": "arm_hinge_pin_column_lower",
-            "center_mm": [0.0, 0.0, COLUMN_H],
-            "bbox_mm": [JOINT_PIN_D, JOINT_PIN_L, JOINT_PIN_D],
-        },
-        {
-            "part": "arm_hinge_pin_lower_upper",
-            "center_mm": [0.0, 0.0, COLUMN_H + LOWER_ARM_L],
-            "bbox_mm": [JOINT_PIN_D, JOINT_PIN_L, JOINT_PIN_D],
-        },
-        {
-            "part": "holder_tilt_joint",
-            "center_mm": [0.0, 0.0, HOLDER_WORLD_CENTER_Z],
-            "bbox_mm": [TILT_PIN_D, TILT_PIN_L, TILT_PIN_D],
-        },
-        {
-            "part": "jaw_spring_or_screw",
-            "center_mm": [0.0, 0.0, HOLDER_WORLD_CENTER_Z + HOLDER_H / 2.0],
-            "bbox_mm": [SPRING_D, SPRING_L, SPRING_D],
-        },
-        {
-            "part": "base_fastener_1",
-            "center_mm": [BASE_BOLT_R, 0.0, BASE_PLATE_T / 2.0],
-            "bbox_mm": [FASTENER_BODY_D, FASTENER_BODY_D, FASTENER_BODY_L],
-        },
-        {
-            "part": "base_fastener_2",
-            "center_mm": [0.0, BASE_BOLT_R, BASE_PLATE_T / 2.0],
-            "bbox_mm": [FASTENER_BODY_D, FASTENER_BODY_D, FASTENER_BODY_L],
-        },
-        {
-            "part": "base_fastener_3",
-            "center_mm": [-BASE_BOLT_R, 0.0, BASE_PLATE_T / 2.0],
-            "bbox_mm": [FASTENER_BODY_D, FASTENER_BODY_D, FASTENER_BODY_L],
-        },
-        {
-            "part": "base_fastener_4",
-            "center_mm": [0.0, -BASE_BOLT_R, BASE_PLATE_T / 2.0],
-            "bbox_mm": [FASTENER_BODY_D, FASTENER_BODY_D, FASTENER_BODY_L],
-        },
-    ],
-    "assembly_constraints": [
-        {
-            "id": "column_on_base_centered",
-            "type": "centered",
-            "parts": ["base_plate", "vertical_support_column"],
-            "axes": ["X", "Y"],
-            "feature_refs": ["base_alignment_pins", "column_base_mount_bore"],
-            "target": "column and base share X/Y centerlines",
-            "tolerance_mm": 0.25,
-        },
-        {
-            "id": "column_lower_arm_joint_coaxial",
-            "type": "coaxial",
-            "parts": ["vertical_support_column", "lower_arm_segment", "arm_hinge_joints"],
-            "axes": ["Y"],
-            "feature_refs": ["column_lower_arm_joint_boss", "lower_arm_base_joint_bore", "arm_hinge_joint_pins"],
-            "target": "joint axes are colinear",
-            "tolerance_mm": 0.25,
-        },
-        {
-            "id": "lower_upper_arm_joint_coaxial",
-            "type": "coaxial",
-            "parts": ["lower_arm_segment", "upper_arm_segment", "arm_hinge_joints"],
-            "axes": ["Y"],
-            "feature_refs": ["lower_arm_upper_joint_bore", "upper_arm_lower_joint_bore", "arm_hinge_joint_pins"],
-            "target": "joint axes are colinear",
-            "tolerance_mm": 0.25,
-        },
-        {
-            "id": "upper_arm_holder_joint_coaxial",
-            "type": "coaxial",
-            "parts": ["upper_arm_segment", "device_holder", "holder_tilt_joint"],
-            "axes": ["Y"],
-            "feature_refs": ["upper_arm_holder_joint_bore", "holder_tilt_joint_bore", "holder_tilt_joint_pin"],
-            "target": "joint axes are colinear",
-            "tolerance_mm": 0.25,
-        },
-        {
-            "id": "jaws_centered_in_holder_slots",
-            "type": "centered",
-            "parts": ["device_holder", "device_gripper_jaws"],
-            "axes": ["X"],
-            "feature_refs": ["holder_jaw_slots", "jaw_slide_or_pivot_bores"],
-            "target": "jaws are symmetrically positioned in slots",
-            "tolerance_mm": 0.25,
-        },
-    ],
-}
 
 
-def make_z_cylindrical_cutter(x: float, y: float, z_center: float, diameter: float, depth: float) -> cq.Workplane:
+def safe_fillet(obj, selector, radius):
+    try:
+        return obj.edges(selector).fillet(radius)
+    except Exception:
+        return obj
+
+
+def safe_chamfer(obj, selector, amount):
+    try:
+        return obj.edges(selector).chamfer(amount)
+    except Exception:
+        return obj
+
+
+def make_y_cylindrical_cutter(x, y_center, z, diameter, depth):
     return (
-        cq.Workplane("XY")
-        .center(x, y)
-        .cylinder(depth, diameter / 2.0, centered=(True, True, True))
-        .translate((0.0, 0.0, z_center))
+        cq.Workplane("XZ")
+        .center(x, z)
+        .circle(diameter / 2)
+        .extrude(depth)
+        .translate((0, y_center - depth / 2, 0))
     )
 
 
-def cut_through_hole_z(body: cq.Workplane, x: float, y: float, bottom_z: float, top_z: float, diameter: float) -> cq.Workplane:
-    depth = (top_z - bottom_z) + 2.0 * CUT_EPS
-    z_center = (top_z + bottom_z) / 2.0
-    cutter = make_z_cylindrical_cutter(x, y, z_center, diameter, depth)
+def cut_through_hole_y(body, x, z, y_min, y_max, diameter):
+    depth = (y_max - y_min) + 2 * CUT_EPS
+    y_center = (y_max + y_min) / 2
+    cutter = make_y_cylindrical_cutter(x, y_center, z, diameter, depth)
     return body.cut(cutter)
 
 
-def make_y_cylinder(diameter: float, length: float, x: float, y_center: float, z: float) -> cq.Workplane:
-    solid = cq.Solid.makeCylinder(
-        diameter / 2.0,
-        length,
-        pnt=cq.Vector(x, y_center - length / 2.0, z),
-        dir=cq.Vector(0.0, 1.0, 0.0),
-    )
-    return cq.Workplane("XZ").add(solid)
-
-
-def make_x_cylinder(diameter: float, length: float, x_center: float, y: float, z: float) -> cq.Workplane:
-    solid = cq.Solid.makeCylinder(
-        diameter / 2.0,
-        length,
-        pnt=cq.Vector(x_center - length / 2.0, y, z),
-        dir=cq.Vector(1.0, 0.0, 0.0),
-    )
-    return cq.Workplane("YZ").add(solid)
-
-
-def cut_through_hole_y(body: cq.Workplane, x: float, z: float, y_min: float, y_max: float, diameter: float) -> cq.Workplane:
-    depth = (y_max - y_min) + 2.0 * CUT_EPS
-    y_center = (y_min + y_max) / 2.0
-    cutter = make_y_cylinder(diameter, depth, x, y_center, z)
-    return body.cut(cutter)
-
-
-def cut_through_hole_x(body: cq.Workplane, y: float, z: float, x_min: float, x_max: float, diameter: float) -> cq.Workplane:
-    depth = (x_max - x_min) + 2.0 * CUT_EPS
-    x_center = (x_min + x_max) / 2.0
-    cutter = make_x_cylinder(diameter, depth, x_center, y, z)
-    return body.cut(cutter)
-
-
-def make_base_plate() -> cq.Workplane:
-    plate = cq.Workplane("XY").box(BASE_PLATE_W, BASE_PLATE_D, BASE_PLATE_T, centered=(True, True, False))
-    plate = plate.edges("|Z").chamfer(EDGE_CHAMFER)
-
-    for angle_deg in [0.0, 90.0, 180.0, 270.0]:
-        angle_rad = math.radians(angle_deg)
-        x = BASE_BOLT_R * math.cos(angle_rad)
-        y = BASE_BOLT_R * math.sin(angle_rad)
-        plate = cut_through_hole_z(plate, x, y, 0.0, BASE_PLATE_T, M6_CLEARANCE_D)
-
-    for x in (-ALIGN_PIN_OFFSET_X, ALIGN_PIN_OFFSET_X):
-        pin = (
-            cq.Workplane("XY")
-            .center(x, ALIGN_PIN_OFFSET_Y)
-            .circle(ALIGN_PIN_D / 2.0)
-            .extrude(ALIGN_PIN_H)
-            .translate((0.0, 0.0, BASE_PLATE_T))
-        )
-        plate = plate.union(pin)
-
-    return plate.clean()
-
-
-def make_vertical_support_column() -> cq.Workplane:
-    outer = cq.Workplane("XY").box(COLUMN_W, COLUMN_D, COLUMN_H, centered=(True, True, False))
-    inner_w = COLUMN_W - 2.0 * COLUMN_WALL_T
-    inner_d = COLUMN_D - 2.0 * COLUMN_WALL_T
-    inner_h = COLUMN_H - COLUMN_WALL_T
-
-    if inner_w > 0.0 and inner_d > 0.0 and inner_h > 0.0:
-        inner = (
-            cq.Workplane("XY")
-            .box(inner_w, inner_d, inner_h, centered=(True, True, False))
-            .translate((0.0, 0.0, COLUMN_WALL_T))
-        )
-        column = outer.cut(inner)
-    else:
-        column = outer
-
-    for x in (-ALIGN_PIN_OFFSET_X, ALIGN_PIN_OFFSET_X):
-        bore = (
-            cq.Workplane("XY")
-            .center(x, ALIGN_PIN_OFFSET_Y)
-            .circle(ALIGN_PIN_D / 2.0)
-            .extrude(ALIGN_PIN_H + CUT_EPS)
-        )
-        column = column.cut(bore)
-
-    boss = make_y_cylinder(JOINT_BOSS_D, JOINT_BOSS_L, 0.0, 0.0, COLUMN_H)
-    column = column.union(boss)
-
-    return column.clean()
-
-
-def make_arm_segment(length_z: float, width_x: float, thickness_y: float, height_z: float, distal_bore_diameter: float) -> cq.Workplane:
-    arm = cq.Workplane("XY").box(width_x, thickness_y, length_z, centered=(True, True, False))
-    arm = arm.edges("|Z").chamfer(EDGE_CHAMFER)
-
-    arm = cut_through_hole_y(
-        arm,
-        0.0,
-        0.0,
-        -thickness_y / 2.0,
-        thickness_y / 2.0,
-        ARM_BORE_D,
-    )
-    arm = cut_through_hole_y(
-        arm,
-        0.0,
-        length_z,
-        -thickness_y / 2.0,
-        thickness_y / 2.0,
-        distal_bore_diameter,
+def rotate_xz(x, z, angle_deg):
+    a = math.radians(angle_deg)
+    return (
+        x * math.cos(a) + z * math.sin(a),
+        -x * math.sin(a) + z * math.cos(a),
     )
 
-    return arm.clean()
+
+def add_vec(a, b):
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
 
 
-def make_lower_arm_segment() -> cq.Workplane:
-    return make_arm_segment(LOWER_ARM_L, LOWER_ARM_W, LOWER_ARM_W, LOWER_ARM_H, ARM_BORE_D)
+def loc_y_rotation_at(point, angle_deg):
+    return cq.Location(cq.Vector(*point), cq.Vector(0, 1, 0), angle_deg)
 
 
-def make_upper_arm_segment() -> cq.Workplane:
-    return make_arm_segment(UPPER_ARM_L, UPPER_ARM_W, UPPER_ARM_W, UPPER_ARM_H, TILT_BORE_D)
-
-
-def make_device_holder() -> cq.Workplane:
-    holder = cq.Workplane("XY").box(HOLDER_W, HOLDER_T, HOLDER_H, centered=(True, True, False))
-    holder = holder.edges("|Z").chamfer(EDGE_CHAMFER)
-
-    holder = cut_through_hole_y(
-        holder,
-        0.0,
-        0.0,
-        -HOLDER_T / 2.0,
-        HOLDER_T / 2.0,
-        TILT_BORE_D,
+def loc_with_local_anchor_at_target(local_anchor_x, local_anchor_z, target, angle_deg):
+    rx, rz = rotate_xz(local_anchor_x, local_anchor_z, angle_deg)
+    return cq.Location(
+        cq.Vector(target[0] - rx, target[1], target[2] - rz),
+        cq.Vector(0, 1, 0),
+        angle_deg,
     )
 
-    for x in (-JAW_OFFSET_X, JAW_OFFSET_X):
-        slot = (
-            cq.Workplane("YZ")
-            .workplane(offset=x - JAW_SLOT_W / 2.0)
-            .rect(JAW_SLOT_L, JAW_H)
-            .extrude(JAW_SLOT_W)
-            .translate((0.0, HOLDER_SLOT_CENTER_Y, 0.0))
-        )
-        holder = holder.cut(slot)
 
-    return holder.clean()
+def make_rounded_box(length, width, height, fillet_radius=1.2):
+    part = cq.Workplane("XY").box(length, width, height)
+    part = safe_fillet(part, "|Z", fillet_radius)
+    part = safe_chamfer(part, ">Z or <Z", small_chamfer)
+    return part
 
 
-def make_jaw() -> cq.Workplane:
-    jaw_body = cq.Workplane("XY").box(JAW_W, JAW_L, JAW_H, centered=(True, True, False))
-    pad = (
-        cq.Workplane("XY")
-        .box(JAW_PAD_W, JAW_PAD_T, JAW_PAD_H, centered=(True, True, False))
-        .translate((0.0, JAW_L, (JAW_H - JAW_PAD_H) / 2.0))
-    )
-    jaw = jaw_body.union(pad)
-    jaw = cut_through_hole_x(
-        jaw,
-        JAW_L / 2.0,
-        JAW_BORE_Z,
-        -JAW_W / 2.0,
-        JAW_W / 2.0,
-        JAW_PIN_D,
-    )
-    return jaw.clean()
+def make_cap_screw(length=8.0):
+    shank = cq.Workplane("XY").cylinder(length, screw_diameter / 2)
 
-
-def make_arm_hinge_pin() -> cq.Workplane:
-    return make_y_cylinder(JOINT_PIN_D, JOINT_PIN_L, 0.0, 0.0, 0.0).clean()
-
-
-def make_holder_tilt_pin() -> cq.Workplane:
-    return make_y_cylinder(TILT_PIN_D, TILT_PIN_L, 0.0, 0.0, 0.0).clean()
-
-
-def make_spring_or_screw() -> cq.Workplane:
-    return make_y_cylinder(SPRING_D, SPRING_L, 0.0, 0.0, 0.0).clean()
-
-
-def make_base_fastener() -> cq.Workplane:
-    shaft = cq.Workplane("XY").circle(FASTENER_BODY_D / 2.0).extrude(FASTENER_BODY_L)
     head = (
         cq.Workplane("XY")
-        .circle((FASTENER_BODY_D * 1.6) / 2.0)
-        .extrude(4.0)
-        .translate((0.0, 0.0, BASE_PLATE_T))
+        .workplane(offset=length / 2 + screw_head_height / 2)
+        .cylinder(screw_head_height, screw_head_diameter / 2)
     )
-    return shaft.union(head).clean()
+    head = safe_chamfer(head, ">Z or <Z", 0.25)
 
-
-def build_assembly() -> cq.Assembly:
-    base_plate = make_base_plate()
-    column = make_vertical_support_column()
-    lower_arm = make_lower_arm_segment()
-    upper_arm = make_upper_arm_segment()
-    holder = make_device_holder()
-    jaw_left = make_jaw()
-    jaw_right = make_jaw()
-    hinge_pin_a = make_arm_hinge_pin()
-    hinge_pin_b = make_arm_hinge_pin()
-    tilt_pin = make_holder_tilt_pin()
-    spring_body = make_spring_or_screw()
-    base_fastener = make_base_fastener()
-
-    assembly = cq.Assembly(name=COMPONENT_NAME)
-    assembly.add(base_plate, name="base_plate", loc=cq.Location(cq.Vector(0.0, 0.0, 0.0)))
-    assembly.add(column, name="vertical_support_column", loc=cq.Location(cq.Vector(0.0, 0.0, BASE_PLATE_T)))
-    assembly.add(lower_arm, name="lower_arm_segment", loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + BASE_PLATE_T)))
-    assembly.add(upper_arm, name="upper_arm_segment", loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + LOWER_ARM_L + BASE_PLATE_T)))
-    assembly.add(holder, name="device_holder", loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + LOWER_ARM_L + UPPER_ARM_L + BASE_PLATE_T)))
-    assembly.add(
-        jaw_left,
-        name="jaw_left",
-        loc=cq.Location(cq.Vector(-JAW_OFFSET_X, HOLDER_SLOT_CENTER_Y, COLUMN_H + LOWER_ARM_L + UPPER_ARM_L + BASE_PLATE_T)),
-    )
-    assembly.add(
-        jaw_right,
-        name="jaw_right",
-        loc=cq.Location(cq.Vector(JAW_OFFSET_X, HOLDER_SLOT_CENTER_Y, COLUMN_H + LOWER_ARM_L + UPPER_ARM_L + BASE_PLATE_T)),
-    )
-    assembly.add(
-        hinge_pin_a,
-        name="arm_hinge_pin_column_lower",
-        loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + BASE_PLATE_T)),
-    )
-    assembly.add(
-        hinge_pin_b,
-        name="arm_hinge_pin_lower_upper",
-        loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + LOWER_ARM_L + BASE_PLATE_T)),
-    )
-    assembly.add(
-        tilt_pin,
-        name="holder_tilt_joint",
-        loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + LOWER_ARM_L + UPPER_ARM_L + BASE_PLATE_T)),
-    )
-    assembly.add(
-        spring_body,
-        name="jaw_spring_or_screw",
-        loc=cq.Location(cq.Vector(0.0, 0.0, COLUMN_H + LOWER_ARM_L + UPPER_ARM_L + HOLDER_H / 2.0 + BASE_PLATE_T)),
+    socket = (
+        cq.Workplane("XY")
+        .workplane(offset=length / 2 + screw_head_height + CUT_EPS)
+        .polygon(6, 2.0)
+        .extrude(-(screw_head_height * 0.65 + CUT_EPS))
     )
 
-    bolt_positions = [
-        (BASE_BOLT_R, 0.0),
-        (0.0, BASE_BOLT_R),
-        (-BASE_BOLT_R, 0.0),
-        (0.0, -BASE_BOLT_R),
-    ]
-    for index, (x, y) in enumerate(bolt_positions, start=1):
-        assembly.add(
-            base_fastener,
-            name=f"base_fastener_{index}",
-            loc=cq.Location(cq.Vector(x, y, -3.0)),
+    return shank.union(head).cut(socket)
+
+
+def make_pin(length):
+    pin = cq.Workplane("XY").cylinder(length, joint_pin_diameter / 2)
+    return safe_chamfer(pin, ">Z or <Z", 0.4)
+
+
+def make_washer():
+    washer = cq.Workplane("XY").cylinder(washer_thickness, joint_washer_diameter / 2)
+    bore = cq.Workplane("XY").cylinder(
+        washer_thickness + CUT_EPS,
+        (joint_pin_diameter + joint_clearance) / 2,
+    )
+    washer = washer.cut(bore)
+    return safe_chamfer(washer, ">Z or <Z", 0.25)
+
+
+def make_bushing():
+    bushing = cq.Workplane("XY").cylinder(bushing_length, joint_bushing_diameter / 2)
+    bore = cq.Workplane("XY").cylinder(
+        bushing_length + CUT_EPS,
+        (joint_pin_diameter + joint_clearance) / 2,
+    )
+    bushing = bushing.cut(bore)
+    return safe_chamfer(bushing, ">Z or <Z", 0.3)
+
+
+def make_pulley():
+    pulley = cq.Workplane("XY").cylinder(pulley_width, pulley_diameter / 2)
+
+    bore = cq.Workplane("XY").cylinder(
+        pulley_width + CUT_EPS,
+        (joint_pin_diameter + joint_clearance) / 2,
+    )
+
+    groove_outer = cq.Workplane("XY").cylinder(
+        pulley_width + 2 * CUT_EPS,
+        pulley_diameter / 2 + 0.05,
+    )
+    groove_inner = cq.Workplane("XY").cylinder(
+        pulley_width + 3 * CUT_EPS,
+        pulley_diameter / 2 - tendon_diameter * 0.55,
+    )
+    groove = groove_outer.cut(groove_inner)
+
+    pulley = pulley.cut(bore).cut(groove)
+    return safe_chamfer(pulley, ">Z or <Z", 0.25)
+
+
+def make_mount_block():
+    block = make_rounded_box(mount_length, mount_width, mount_height, 2.0)
+
+    for x in [-mount_length / 2 + 10, mount_length / 2 - 10]:
+        for y in [-mount_width / 2 + 8, mount_width / 2 - 8]:
+            block = (
+                block.faces(">Z")
+                .workplane()
+                .center(x, y)
+                .cboreHole(
+                    screw_diameter,
+                    screw_head_diameter,
+                    screw_head_height + 0.4,
+                    depth=mount_height + CUT_EPS,
+                )
+            )
+
+    rear_support = (
+        cq.Workplane("XY")
+        .box(8.0, clevis_plate_gap + 2 * clevis_plate_thickness + 4.0, 28.0)
+        .translate((-mount_length / 2 + 4.0, 0, mount_height / 2 + 10.0))
+    )
+    rear_support = safe_fillet(rear_support, "|Z", 1.0)
+
+    return block.union(rear_support)
+
+
+def make_phalanx_link(length):
+    body = (
+        cq.Workplane("XZ")
+        .center(length / 2, 0)
+        .slot2D(length, link_thickness)
+        .extrude(link_width)
+        .translate((0, -link_width / 2, 0))
+    )
+    body = safe_chamfer(body, ">Y or <Y", small_chamfer)
+
+    for x in [0, length]:
+        body = cut_through_hole_y(
+            body,
+            x=x,
+            z=0,
+            y_min=-link_width / 2,
+            y_max=link_width / 2,
+            diameter=joint_bushing_diameter + joint_clearance,
         )
 
-    return assembly
+    tendon_channel = (
+        cq.Workplane("XZ")
+        .center(length / 2, link_thickness / 2 + 0.1)
+        .slot2D(length * 0.62, tendon_diameter * 2.4)
+        .extrude(link_width + CUT_EPS)
+        .translate((0, -link_width / 2 - CUT_EPS / 2, 0))
+    )
+    body = body.cut(tendon_channel)
+
+    for x in [length * 0.30, length * 0.70]:
+        body = cut_through_hole_y(
+            body,
+            x=x,
+            z=0,
+            y_min=-link_width / 2,
+            y_max=link_width / 2,
+            diameter=screw_diameter,
+        )
+
+    return body
 
 
-def validate_geometry(assembly: cq.Assembly) -> dict:
-    results = {
-        "is_assembly": isinstance(assembly, cq.Assembly),
-        "base_plate_dims_positive": BASE_PLATE_W > 0.0 and BASE_PLATE_D > 0.0 and BASE_PLATE_T > 0.0,
-        "column_dims_positive": COLUMN_W > 0.0 and COLUMN_D > 0.0 and COLUMN_H > 0.0,
-        "arm_dims_positive": LOWER_ARM_L > 0.0 and UPPER_ARM_L > 0.0 and LOWER_ARM_W > 0.0 and UPPER_ARM_W > 0.0,
-        "holder_dims_positive": HOLDER_W > 0.0 and HOLDER_H > 0.0 and HOLDER_T > 0.0,
-        "jaw_slot_clearance_ok": JAW_SLOT_W > JAW_W and JAW_SLOT_L >= JAW_L,
-        "column_wall_valid": COLUMN_WALL_T > 0.0 and COLUMN_W > 2.0 * COLUMN_WALL_T and COLUMN_D > 2.0 * COLUMN_WALL_T,
-        "joint_pin_fit_ok": ARM_BORE_D > JOINT_PIN_D and TILT_BORE_D > TILT_PIN_D,
-        "alignment_pin_count_ok": int(ALIGN_PIN_N) >= 2,
-        "base_bolt_count_ok": int(BASE_BOLT_N) == 4,
-        "manifest_feature_count": len(BUILD_MANIFEST["features"]),
-        "manifest_part_frame_count": len(BUILD_MANIFEST["part_frames"]),
-        "manifest_constraint_count": len(BUILD_MANIFEST["assembly_constraints"]),
-        "build_manifest": BUILD_MANIFEST,
-    }
-    return results
+def make_clevis_joint():
+    plate_y = clevis_plate_gap / 2 + clevis_plate_thickness / 2
+
+    plate = (
+        cq.Workplane("XZ")
+        .center(clevis_length / 2, 0)
+        .slot2D(clevis_length, clevis_height)
+        .extrude(clevis_plate_thickness)
+        .translate((0, plate_y - clevis_plate_thickness / 2, 0))
+    )
+    plate = safe_chamfer(plate, ">Y or <Y", 0.35)
+
+    left_plate = plate
+    right_plate = plate.mirror("XZ")
+
+    bridge = (
+        cq.Workplane("XY")
+        .box(8.0, clevis_plate_gap + 2 * clevis_plate_thickness, clevis_height * 0.72)
+        .translate((-4.0, 0, 0))
+    )
+    bridge = safe_fillet(bridge, "|Z", 0.8)
+
+    clevis = left_plate.union(right_plate).union(bridge)
+
+    clevis = cut_through_hole_y(
+        clevis,
+        x=clevis_length,
+        z=0,
+        y_min=-(clevis_plate_gap / 2 + clevis_plate_thickness),
+        y_max=(clevis_plate_gap / 2 + clevis_plate_thickness),
+        diameter=joint_pin_diameter + joint_clearance,
+    )
+
+    return clevis
 
 
-def export_all(assembly: cq.Assembly, output_dir: str) -> list[str]:
-    os.makedirs(output_dir, exist_ok=True)
-    output_paths = []
+def make_fingertip_pad():
+    pad = (
+        cq.Workplane("XZ")
+        .center(distal_length, -link_thickness / 2 - 2.3)
+        .slot2D(18.0, 6.5)
+        .extrude(link_width + 1.0)
+        .translate((0, -(link_width + 1.0) / 2, 0))
+    )
+    return safe_fillet(pad, "|Y", 1.4)
 
-    step_path = os.path.join(output_dir, f"{COMPONENT_NAME}.step")
-    assembly.save(step_path)
-    output_paths.append(step_path)
 
-    return output_paths
+def make_tendon_cable(points):
+    cable = None
+
+    for a, b in zip(points[:-1], points[1:]):
+        ax, ay, az = a
+        bx, by, bz = b
+
+        dx = bx - ax
+        dz = bz - az
+        length = math.sqrt(dx * dx + dz * dz)
+
+        if length <= 0.001:
+            continue
+
+        angle = math.degrees(math.atan2(dz, dx))
+
+        segment = (
+            cq.Workplane("YZ")
+            .circle(tendon_diameter / 2)
+            .extrude(length)
+            .rotate((0, 0, 0), (0, 1, 0), -angle)
+            .translate((ax, ay, az))
+        )
+
+        cable = segment if cable is None else cable.union(segment)
+
+    return cable
 
 
-if __name__ == "__main__":
-    assembly = build_assembly()
-    validate_geometry(assembly)
-    export_all(assembly, "./output")
+base_joint = (0.0, 0.0, mount_height / 2 + 12.0)
+
+angle_1 = proximal_angle
+angle_2 = proximal_angle + middle_angle
+angle_3 = proximal_angle + middle_angle + distal_angle
+
+p1_dx, p1_dz = rotate_xz(proximal_length, 0, angle_1)
+joint_1 = add_vec(base_joint, (p1_dx, 0.0, p1_dz))
+
+p2_dx, p2_dz = rotate_xz(middle_length, 0, angle_2)
+joint_2 = add_vec(joint_1, (p2_dx, 0.0, p2_dz))
+
+p3_dx, p3_dz = rotate_xz(distal_length, 0, angle_3)
+tip_point = add_vec(joint_2, (p3_dx, 0.0, p3_dz))
+
+assembly = cq.Assembly(name=finger_name)
+
+aluminum = cq.Color(0.68, 0.72, 0.76, 1.0)
+dark_steel = cq.Color(0.08, 0.085, 0.09, 1.0)
+brass = cq.Color(0.86, 0.62, 0.24, 1.0)
+black_polymer = cq.Color(0.01, 0.012, 0.014, 1.0)
+blue_cable = cq.Color(0.0, 0.18, 0.8, 1.0)
+
+mount = make_mount_block()
+proximal = make_phalanx_link(proximal_length)
+middle = make_phalanx_link(middle_length)
+distal = make_phalanx_link(distal_length)
+
+base_clevis = make_clevis_joint()
+proximal_clevis = make_clevis_joint()
+middle_clevis = make_clevis_joint()
+
+pin_length = clevis_plate_gap + 2 * clevis_plate_thickness + 2 * pin_overhang
+
+pin = make_pin(pin_length)
+washer = make_washer()
+bushing = make_bushing()
+pulley = make_pulley()
+screw = make_cap_screw(8.0)
+pad = make_fingertip_pad()
+
+assembly.add(mount, name="palm_mount_block", color=aluminum)
+
+assembly.add(
+    base_clevis,
+    name="base_clevis_bracket",
+    loc=loc_with_local_anchor_at_target(clevis_length, 0, base_joint, 0),
+    color=aluminum,
+)
+
+assembly.add(
+    proximal,
+    name="proximal_phalanx_link",
+    loc=loc_y_rotation_at(base_joint, angle_1),
+    color=aluminum,
+)
+
+assembly.add(
+    proximal_clevis,
+    name="proximal_output_clevis",
+    loc=loc_with_local_anchor_at_target(clevis_length, 0, joint_1, angle_1),
+    color=aluminum,
+)
+
+assembly.add(
+    middle,
+    name="middle_phalanx_link",
+    loc=loc_y_rotation_at(joint_1, angle_2),
+    color=aluminum,
+)
+
+assembly.add(
+    middle_clevis,
+    name="middle_output_clevis",
+    loc=loc_with_local_anchor_at_target(clevis_length, 0, joint_2, angle_2),
+    color=aluminum,
+)
+
+assembly.add(
+    distal,
+    name="distal_phalanx_link",
+    loc=loc_y_rotation_at(joint_2, angle_3),
+    color=aluminum,
+)
+
+assembly.add(
+    pad,
+    name="black_polymer_fingertip_pad",
+    loc=loc_y_rotation_at(joint_2, angle_3),
+    color=black_polymer,
+)
+
+joint_points = [base_joint, joint_1, joint_2]
+
+for i, joint in enumerate(joint_points):
+    assembly.add(
+        pin,
+        name=f"joint_{i}_dark_steel_pin",
+        loc=cq.Location(cq.Vector(*joint), cq.Vector(1, 0, 0), 90),
+        color=dark_steel,
+    )
+
+    assembly.add(
+        bushing,
+        name=f"joint_{i}_brass_bushing",
+        loc=cq.Location(cq.Vector(*joint), cq.Vector(1, 0, 0), 90),
+        color=brass,
+    )
+
+    y_outer = clevis_plate_gap / 2 + clevis_plate_thickness + washer_thickness / 2
+
+    assembly.add(
+        washer,
+        name=f"joint_{i}_left_washer",
+        loc=cq.Location(cq.Vector(joint[0], y_outer, joint[2]), cq.Vector(1, 0, 0), 90),
+        color=dark_steel,
+    )
+
+    assembly.add(
+        washer,
+        name=f"joint_{i}_right_washer",
+        loc=cq.Location(cq.Vector(joint[0], -y_outer, joint[2]), cq.Vector(1, 0, 0), 90),
+        color=dark_steel,
+    )
+
+    assembly.add(
+        pulley,
+        name=f"joint_{i}_tendon_guide_pulley",
+        loc=cq.Location(
+            cq.Vector(joint[0], 0.0, joint[2] + link_thickness / 2 + 3.5),
+            cq.Vector(1, 0, 0),
+            90,
+        ),
+        color=black_polymer,
+    )
+
+for x, y in [(-12, -10), (12, -10), (-12, 10), (12, 10)]:
+    assembly.add(
+        screw,
+        name=f"mount_cap_screw_{x}_{y}",
+        loc=cq.Location(cq.Vector(x, y, mount_height / 2 + 0.5)),
+        color=dark_steel,
+    )
+
+for i, joint in enumerate(joint_points):
+    screw_y = clevis_plate_gap / 2 + clevis_plate_thickness + pin_overhang + 0.6
+
+    assembly.add(
+        screw,
+        name=f"joint_{i}_pin_end_screw_left",
+        loc=cq.Location(
+            cq.Vector(joint[0], screw_y, joint[2]),
+            cq.Vector(1, 0, 0),
+            90,
+        ),
+        color=dark_steel,
+    )
+
+    assembly.add(
+        screw,
+        name=f"joint_{i}_pin_end_screw_right",
+        loc=cq.Location(
+            cq.Vector(joint[0], -screw_y, joint[2]),
+            cq.Vector(1, 0, 0),
+            -90,
+        ),
+        color=dark_steel,
+    )
+
+tendon_points = [
+    (base_joint[0] - 18.0, 0.0, base_joint[2] + link_thickness / 2 + 3.5),
+    (base_joint[0], 0.0, base_joint[2] + link_thickness / 2 + 3.5),
+    (joint_1[0], 0.0, joint_1[2] + link_thickness / 2 + 3.5),
+    (joint_2[0], 0.0, joint_2[2] + link_thickness / 2 + 3.5),
+    (tip_point[0] - 6.0, 0.0, tip_point[2] + link_thickness / 2 + 1.0),
+]
+
+tendon = make_tendon_cable(tendon_points)
+assembly.add(tendon, name="blue_synthetic_tendon_cable", color=blue_cable)
+
+try:
+    show_object(assembly)
+except NameError:
+    assembly.save(f"{finger_name}.step")

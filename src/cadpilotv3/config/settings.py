@@ -24,7 +24,7 @@ class AppSettings(BaseSettings):
     llm_model: str = "gpt-4.1"
     llm_reasoning_model: str = "gpt-4.1"
     llm_critic_model: str = "gpt-4.1"
-    llm_code_model: str = "gpt-5.4"
+    llm_code_model: str = "gpt-5.5"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 16000
     llm_structured_max_tokens: int = 5000
