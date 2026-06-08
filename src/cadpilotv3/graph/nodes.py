@@ -28,6 +28,17 @@ from cadpilotv3.services.repair_service import RepairService
 
 logger = logging.getLogger(__name__)
 CODEGEN_NODE_NAME = "code_generation_infill_agent"
+DIRECT_REPAIR_ERROR_CLASSES = frozenset(
+    {
+        "syntax_error",
+        "indent_error",
+        "name_error",
+        "api_misuse",
+        "type_error",
+        "import_error",
+        "export_format_error",
+    }
+)
 
 
 class PipelineNodes:
@@ -207,6 +218,7 @@ class PipelineNodes:
         )
 
         state["script"] = implemented_script
+        state["direct_repair_codegen"] = False
 
         return state
 
@@ -244,6 +256,7 @@ class PipelineNodes:
             if code_event.event_type == "code_generation_complete":
                 state["script"] = code_event.payload["script"]
 
+        state["direct_repair_codegen"] = False
         return state
 
     def execution_validation_node(self, state: PipelineState) -> PipelineState:
@@ -259,6 +272,7 @@ class PipelineNodes:
             state["repair_decision"] = None
         else:
             state["final_geometry"] = None
+            self._prepare_direct_repair_codegen(state)
 
         return state
 
@@ -275,6 +289,7 @@ class PipelineNodes:
             state["repair_decision"] = None
         else:
             state["final_geometry"] = None
+            self._prepare_direct_repair_codegen(state)
 
         return state
 
@@ -403,6 +418,50 @@ class PipelineNodes:
             {key: value for key, value in item.items() if _has_repair_history_value(value)}
             for item in [*history, entry]
         ]
+
+    def _prepare_direct_repair_codegen(self, state: PipelineState) -> None:
+        state["direct_repair_codegen"] = False
+        if not self._should_use_direct_repair_codegen(state):
+            return
+
+        validation = state["validation"]
+        decision = RepairOutput(
+            action="regenerate",
+            root_cause=(
+                f"{getattr(validation, 'error_class', None) or 'execution_failure'}: "
+                f"{getattr(validation, 'error_summary', None) or 'Generated script failed.'}"
+            ),
+            fix_description=(
+                "Regenerate the complete script directly from the validation "
+                "failure, preserving the existing spec, geometry plan, and "
+                "parameter schema."
+            ),
+            confidence="high",
+        )
+        state["repair_decision"] = decision
+        state["direct_repair_codegen"] = True
+        self._append_repair_history(state, decision=decision)
+        state["repair_count"] += 1
+
+    def _should_use_direct_repair_codegen(self, state: PipelineState) -> bool:
+        if not getattr(self.settings, "cad_enable_direct_repair_codegen", False):
+            return False
+        if state.get("repair_count", 0) != 0:
+            return False
+        if state.get("repair_history"):
+            return False
+
+        max_attempts = getattr(self.settings, "cad_max_repair_attempts", 0)
+        if state.get("repair_count", 0) >= max_attempts:
+            return False
+
+        validation = state["validation"]
+        if not getattr(validation, "repair_needed", False):
+            return False
+        if getattr(validation, "repair_complexity", None) != "patch":
+            return False
+
+        return getattr(validation, "error_class", None) in DIRECT_REPAIR_ERROR_CLASSES
 
     def critic_checkpoint_b(self, state: PipelineState) -> PipelineState:
         state["critic_b_report"] = self.critic_checkpoint_b_service.execute(

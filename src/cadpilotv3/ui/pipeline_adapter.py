@@ -36,6 +36,7 @@ def build_initial_state(user_prompt: str) -> PipelineState:
         "repair_decision": None,
         "repair_history": [],
         "repair_count": 0,
+        "direct_repair_codegen": False,
         "critic_a_attempts": 0,
         "critic_b_attempts": 0,
         "final_geometry": None,

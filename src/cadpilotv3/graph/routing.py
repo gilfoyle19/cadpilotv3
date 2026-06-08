@@ -34,10 +34,17 @@ def route_critic_a(
 
 def route_validation(
     state: PipelineState,
-) -> Literal["repair_agent", "contract_validation_node"]:
-    if state["validation"].repair_needed:
-        return "repair_agent"
-    return "contract_validation_node"
+) -> Literal["repair_agent", "code_generation_infill_agent", "contract_validation_node"]:
+    if not state["validation"].repair_needed:
+        return "contract_validation_node"
+
+    if state.get("repair_count", 0) >= get_settings().cad_max_repair_attempts:
+        return "contract_validation_node"
+
+    if state.get("direct_repair_codegen"):
+        return "code_generation_infill_agent"
+
+    return "repair_agent"
 
 
 def route_repair(

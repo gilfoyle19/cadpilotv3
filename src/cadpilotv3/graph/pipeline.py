@@ -94,6 +94,7 @@ def _wire_graph(graph: StateGraph) -> None:
         route_validation,
         {
             "repair_agent": "repair_agent",
+            "code_generation_infill_agent": "code_generation_infill_agent",
             "contract_validation_node": "contract_validation_node",
         },
     )

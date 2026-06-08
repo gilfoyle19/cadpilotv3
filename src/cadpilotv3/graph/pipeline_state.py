@@ -31,6 +31,7 @@ class PipelineState(TypedDict):
     repair_decision: RepairOutput | None
     repair_history: list[dict[str, Any]]
     repair_count: int
+    direct_repair_codegen: bool
     critic_a_attempts: int
     critic_b_attempts: int
 

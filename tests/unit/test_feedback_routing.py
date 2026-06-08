@@ -103,6 +103,37 @@ def test_codegen_node_passes_critic_b_patch_instructions() -> None:
     assert result["script"] == "import cadquery as cq\n"
 
 
+def test_codegen_node_clears_direct_repair_flag_after_consuming_context() -> None:
+    captured = {}
+
+    class FakeCodeGenerationService:
+        def execute_script(self, **kwargs):
+            captured.update(kwargs)
+            return "import cadquery as cq\n"
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.code_generation_infill_service = FakeCodeGenerationService()
+
+    repair_decision = SimpleNamespace(action="regenerate")
+    state = {
+        "spec": object(),
+        "geometry_plan": object(),
+        "parameters": object(),
+        "script": "import cadquery as cq\nold_model = cq.Workplane('XY').box(1, 1, 1)\n",
+        "repair_decision": repair_decision,
+        "direct_repair_codegen": True,
+        "critic_b_report": None,
+    }
+
+    result = nodes.code_generation_infill_agent(state)
+
+    assert captured["repair_context"] is repair_decision
+    assert captured["current_script"] == (
+        "import cadquery as cq\nold_model = cq.Workplane('XY').box(1, 1, 1)\n"
+    )
+    assert result["direct_repair_codegen"] is False
+
+
 def test_geometry_planner_node_passes_critic_b_replan_instructions() -> None:
     captured = {}
     planned = object()
@@ -281,6 +312,94 @@ def test_repair_node_passes_and_records_repair_history() -> None:
         "cannot_patch_reason": "Same error class already failed.",
         "replan_instructions": "Use explicit construction references.",
     }
+
+
+def test_execution_validation_prepares_direct_repair_codegen() -> None:
+    class FakeSandboxService:
+        def execute(self, script):
+            return object()
+
+    class FakeValidationAgent:
+        def run(self, artifacts):
+            return SimpleNamespace(
+                status="runtime_error",
+                repair_needed=True,
+                repair_complexity="patch",
+                error_class="name_error",
+                error_summary="Name WIDTH is not defined.",
+            )
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.settings = SimpleNamespace(
+        cad_enable_direct_repair_codegen=True,
+        cad_max_repair_attempts=2,
+    )
+    nodes.sandbox_service = FakeSandboxService()
+    nodes.execution_validation_llm_agent = FakeValidationAgent()
+
+    state = {
+        "script": "import cadquery as cq\nmodel = cq.Workplane('XY').box(WIDTH, 1, 1)\n",
+        "repair_count": 0,
+        "repair_history": [],
+    }
+
+    result = nodes.execution_validation_node(state)
+
+    assert result["final_geometry"] is None
+    assert result["contract_validation"] == {}
+    assert result["direct_repair_codegen"] is True
+    assert result["repair_count"] == 1
+    assert result["repair_decision"].action == "regenerate"
+    assert result["repair_decision"].confidence == "high"
+    assert result["repair_history"][-1] == {
+        "attempt_index": 0,
+        "validation_error_class": "name_error",
+        "validation_error_summary": "Name WIDTH is not defined.",
+        "action": "regenerate",
+        "root_cause": "name_error: Name WIDTH is not defined.",
+        "fix_description": (
+            "Regenerate the complete script directly from the validation failure, "
+            "preserving the existing spec, geometry plan, and parameter schema."
+        ),
+    }
+
+
+def test_execution_validation_keeps_repair_agent_for_repeated_failures() -> None:
+    class FakeSandboxService:
+        def execute(self, script):
+            return object()
+
+    class FakeValidationAgent:
+        def run(self, artifacts):
+            return SimpleNamespace(
+                status="runtime_error",
+                repair_needed=True,
+                repair_complexity="patch",
+                error_class="name_error",
+                error_summary="Name WIDTH is not defined.",
+            )
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.settings = SimpleNamespace(
+        cad_enable_direct_repair_codegen=True,
+        cad_max_repair_attempts=2,
+    )
+    nodes.sandbox_service = FakeSandboxService()
+    nodes.execution_validation_llm_agent = FakeValidationAgent()
+
+    state = {
+        "script": "import cadquery as cq\nmodel = cq.Workplane('XY').box(WIDTH, 1, 1)\n",
+        "repair_count": 1,
+        "repair_history": [{"attempt_index": 0, "action": "regenerate"}],
+        "repair_decision": SimpleNamespace(action="regenerate"),
+    }
+
+    result = nodes.execution_validation_node(state)
+
+    assert result["direct_repair_codegen"] is False
+    assert result["repair_count"] == 1
+    assert result["repair_history"] == [{"attempt_index": 0, "action": "regenerate"}]
+    assert result["repair_decision"].action == "regenerate"
 
 
 def test_codegen_output_guard_rejects_empty_script() -> None:
@@ -560,10 +679,49 @@ def test_route_validation_sends_success_to_contract_validation() -> None:
     assert route_validation(state) == "contract_validation_node"
 
 
-def test_route_validation_sends_repair_needed_to_repair() -> None:
-    state = {"validation": SimpleNamespace(repair_needed=True)}
+def test_route_validation_sends_repair_needed_to_repair(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_repair_attempts=2),
+    )
+    state = {
+        "validation": SimpleNamespace(repair_needed=True),
+        "repair_count": 0,
+        "direct_repair_codegen": False,
+    }
 
     assert route_validation(state) == "repair_agent"
+
+
+def test_route_validation_sends_direct_repair_to_codegen(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_repair_attempts=2),
+    )
+    state = {
+        "validation": SimpleNamespace(repair_needed=True),
+        "repair_count": 1,
+        "direct_repair_codegen": True,
+    }
+
+    assert route_validation(state) == "code_generation_infill_agent"
+
+
+def test_route_validation_stops_when_repair_budget_is_exhausted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_repair_attempts=2),
+    )
+    state = {
+        "validation": SimpleNamespace(repair_needed=True),
+        "repair_count": 2,
+        "direct_repair_codegen": True,
+    }
+
+    assert route_validation(state) == "contract_validation_node"
 
 
 def test_route_contract_validation_keeps_critic_b_by_default(monkeypatch) -> None:
