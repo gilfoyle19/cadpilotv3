@@ -6,6 +6,7 @@ from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.graph.nodes import PipelineNodes
 from cadpilotv3.graph.pipeline_state import PipelineState
 from cadpilotv3.graph.routing import (
+    route_contract_validation,
     route_critic_a,
     route_critic_b,
     route_repair,
@@ -108,7 +109,14 @@ def _wire_graph(graph: StateGraph) -> None:
         },
     )
 
-    graph.add_edge("contract_validation_node", "critic_checkpoint_b")
+    graph.add_conditional_edges(
+        "contract_validation_node",
+        route_contract_validation,
+        {
+            "critic_checkpoint_b": "critic_checkpoint_b",
+            "export_summary_agent": "export_summary_agent",
+        },
+    )
 
     graph.add_conditional_edges(
         "critic_checkpoint_b",

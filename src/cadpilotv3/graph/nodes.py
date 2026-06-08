@@ -9,6 +9,8 @@ from langgraph.config import get_stream_writer
 from cadpilotv3.agents.execution_validation_agent import ExecutionValidationAgent
 from cadpilotv3.config.settings import AppSettings
 from cadpilotv3.graph.pipeline_state import PipelineState
+from cadpilotv3.graph.routing import should_skip_critic_b
+from cadpilotv3.schemas.critic import CriticBReport, CriticCheckpointBDimensionScores
 from cadpilotv3.schemas.repair import RepairOutput
 from cadpilotv3.services.cadquery_execution_sandbox_service import CadQueryExecutionSandboxService
 from cadpilotv3.services.code_generation_infill_service import (
@@ -281,6 +283,8 @@ class PipelineNodes:
             geometry_plan=state["geometry_plan"],
             validation=state["validation"],
         )
+        if should_skip_critic_b(state):
+            state["critic_b_report"] = _build_skipped_critic_b_report(state)
         return state
 
     async def acontract_validation_node(self, state: PipelineState) -> PipelineState:
@@ -288,6 +292,8 @@ class PipelineNodes:
             geometry_plan=state["geometry_plan"],
             validation=state["validation"],
         )
+        if should_skip_critic_b(state):
+            state["critic_b_report"] = _build_skipped_critic_b_report(state)
         return state
 
     def repair_agent(self, state: PipelineState) -> PipelineState:
@@ -478,3 +484,21 @@ def _get_optional_stream_writer() -> Callable[[Any], None] | None:
 
 def _has_repair_history_value(value: Any) -> bool:
     return value is not None and value != "" and value != []
+
+
+def _build_skipped_critic_b_report(state: PipelineState) -> CriticBReport:
+    return CriticBReport(
+        verdict="pass",
+        overall_fidelity_score=1.0,
+        dimension_scores=CriticCheckpointBDimensionScores(
+            dof_count_verification=1.0,
+            scale_consistency=1.0,
+            constraint_satisfaction=1.0,
+            completeness=1.0,
+            checkpoint_a_resolution=1.0,
+            regression_detection=1.0,
+        ),
+        issues=[],
+        routing="export",
+        user_facing_warnings=list(state.get("user_facing_warnings", []) or []),
+    )

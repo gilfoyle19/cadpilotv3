@@ -7,6 +7,7 @@ from cadpilotv3.agents.code_generation_infill_agent import CodeGenerationInfillA
 from cadpilotv3.graph import routing
 from cadpilotv3.graph.nodes import PipelineNodes
 from cadpilotv3.graph.routing import (
+    route_contract_validation,
     route_critic_a,
     route_critic_b,
     route_repair,
@@ -43,6 +44,29 @@ def _valid_single_part_script() -> str:
             "",
         ]
     )
+
+
+def _critic_b_skip_state() -> dict:
+    return {
+        "geometry_plan": SimpleNamespace(artifact_type="single_part"),
+        "validation": SimpleNamespace(
+            status="success",
+            repair_needed=False,
+            geometry_valid=True,
+            geometry_report=SimpleNamespace(
+                artifact_type="single_part",
+                part_count=1,
+            ),
+        ),
+        "contract_validation": SimpleNamespace(
+            status="pass",
+            passed=True,
+            failure_count=0,
+            warning_count=0,
+        ),
+        "repair_count": 0,
+        "user_facing_warnings": [],
+    }
 
 
 def test_codegen_node_passes_critic_b_patch_instructions() -> None:
@@ -172,6 +196,34 @@ def test_contract_validation_node_runs_before_critic_b() -> None:
         "validation": validation,
     }
     assert result["contract_validation"] is report
+
+
+def test_contract_validation_node_sets_skipped_critic_b_report(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+
+    class FakeContractValidationService:
+        def execute(self, **kwargs):
+            return SimpleNamespace(
+                status="pass",
+                passed=True,
+                failure_count=0,
+                warning_count=0,
+            )
+
+    nodes = object.__new__(PipelineNodes)
+    nodes.contract_validation_service = FakeContractValidationService()
+
+    state = _critic_b_skip_state()
+
+    result = nodes.contract_validation_node(state)
+
+    assert result["critic_b_report"].routing == "export"
+    assert result["critic_b_report"].verdict == "pass"
+    assert result["critic_b_report"].overall_fidelity_score == 1.0
 
 
 def test_repair_node_passes_and_records_repair_history() -> None:
@@ -512,6 +564,83 @@ def test_route_validation_sends_repair_needed_to_repair() -> None:
     state = {"validation": SimpleNamespace(repair_needed=True)}
 
     assert route_validation(state) == "repair_agent"
+
+
+def test_route_contract_validation_keeps_critic_b_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=False),
+    )
+
+    assert route_contract_validation(_critic_b_skip_state()) == "critic_checkpoint_b"
+
+
+def test_route_contract_validation_skips_critic_b_for_clean_single_part(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+
+    assert route_contract_validation(_critic_b_skip_state()) == "export_summary_agent"
+
+
+def test_route_contract_validation_keeps_critic_b_for_assemblies(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+    state = _critic_b_skip_state()
+    state["geometry_plan"] = SimpleNamespace(artifact_type="assembly")
+    state["validation"].geometry_report.artifact_type = "assembly"
+    state["validation"].geometry_report.part_count = 2
+
+    assert route_contract_validation(state) == "critic_checkpoint_b"
+
+
+def test_route_contract_validation_keeps_critic_b_for_contract_warnings(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+    state = _critic_b_skip_state()
+    state["contract_validation"].status = "warn"
+    state["contract_validation"].warning_count = 1
+
+    assert route_contract_validation(state) == "critic_checkpoint_b"
+
+
+def test_route_contract_validation_keeps_critic_b_after_repairs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+    state = _critic_b_skip_state()
+    state["repair_count"] = 1
+
+    assert route_contract_validation(state) == "critic_checkpoint_b"
+
+
+def test_route_contract_validation_keeps_critic_b_for_existing_warnings(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_enable_conditional_critic_b=True),
+    )
+    state = _critic_b_skip_state()
+    state["user_facing_warnings"] = ["Proceeding with a known issue."]
+
+    assert route_contract_validation(state) == "critic_checkpoint_b"
 
 
 def test_route_critic_a_replans_when_attempt_budget_remains(monkeypatch) -> None:

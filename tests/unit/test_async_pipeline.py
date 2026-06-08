@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from cadpilotv3.graph import routing
 from cadpilotv3.graph.pipeline import build_async_pipeline
 
 
@@ -41,6 +42,11 @@ class FakeAsyncPipelineNodes:
         state["validation"] = SimpleNamespace(
             status="success",
             repair_needed=False,
+            geometry_valid=True,
+            geometry_report=SimpleNamespace(
+                artifact_type="single_part",
+                part_count=1,
+            ),
         )
         state["final_geometry"] = {
             "workspace_dir": ".sandbox_runs/fake",
@@ -124,3 +130,36 @@ async def test_build_async_pipeline_supports_ainvoke(monkeypatch) -> None:
     ]
     assert result["export_files"] == ["part.step"]
     assert result["assembly_report_markdown"] == "done"
+
+
+async def test_build_async_pipeline_can_skip_critic_b_when_enabled(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "cadpilotv3.graph.pipeline.PipelineNodes",
+        FakeAsyncPipelineNodes,
+    )
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(
+            cad_enable_conditional_critic_b=True,
+            cad_max_critic_a_attempts=2,
+            cad_max_critic_b_attempts=2,
+            cad_max_repair_attempts=2,
+        ),
+    )
+
+    pipeline = build_async_pipeline(SimpleNamespace(calls=calls))
+    result = await pipeline.ainvoke(_initial_state())
+
+    assert calls == [
+        "intent_spec_agent",
+        "geometry_planner_agent",
+        "critic_checkpoint_a",
+        "parameter_agent",
+        "code_generation_infill_agent",
+        "execution_validation_node",
+        "contract_validation_node",
+        "export_summary_agent",
+    ]
+    assert result["export_files"] == ["part.step"]

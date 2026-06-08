@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from cadpilotv3.config.settings import get_settings
 from cadpilotv3.graph.pipeline_state import PipelineState
+
+
+def route_contract_validation(
+    state: PipelineState,
+) -> Literal["critic_checkpoint_b", "export_summary_agent"]:
+    if should_skip_critic_b(state):
+        return "export_summary_agent"
+    return "critic_checkpoint_b"
 
 
 def route_critic_a(
@@ -83,3 +91,74 @@ def route_critic_b(
         return "geometry_planner_agent"
 
     return "export_summary_agent"
+
+
+def should_skip_critic_b(state: PipelineState) -> bool:
+    settings = get_settings()
+    if not getattr(settings, "cad_enable_conditional_critic_b", False):
+        return False
+
+    if state.get("repair_count", 0) > 0:
+        return False
+
+    if state.get("user_facing_warnings"):
+        return False
+
+    validation = state.get("validation")
+    if not _validation_passed_cleanly(validation):
+        return False
+
+    contract_validation = state.get("contract_validation")
+    if not _contract_validation_passed_cleanly(contract_validation):
+        return False
+
+    return _is_single_part_output(state)
+
+
+def _validation_passed_cleanly(validation: Any) -> bool:
+    if validation is None:
+        return False
+    if _get_value(validation, "status") != "success":
+        return False
+    if _get_value(validation, "repair_needed", False):
+        return False
+    return bool(_get_value(validation, "geometry_valid", False))
+
+
+def _contract_validation_passed_cleanly(contract_validation: Any) -> bool:
+    if contract_validation is None:
+        return False
+    if _get_value(contract_validation, "status") != "pass":
+        return False
+    if _get_value(contract_validation, "passed") is not True:
+        return False
+    if _get_value(contract_validation, "failure_count", 0) != 0:
+        return False
+    return _get_value(contract_validation, "warning_count", 0) == 0
+
+
+def _is_single_part_output(state: PipelineState) -> bool:
+    validation = state.get("validation")
+    geometry_report = _get_value(validation, "geometry_report")
+    geometry_plan = state.get("geometry_plan")
+
+    artifact_type = (
+        _get_value(geometry_report, "artifact_type")
+        or _get_value(geometry_plan, "artifact_type")
+        or ""
+    )
+    if str(artifact_type).lower() == "assembly":
+        return False
+
+    part_count = _get_value(geometry_report, "part_count")
+    if part_count is None:
+        return True
+    return int(part_count) <= 1
+
+
+def _get_value(value: Any, name: str, default: Any = None) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
