@@ -1,6 +1,7 @@
 from cadpilotv3.schemas.common import BaseArtifact, Issue, KeyValueMetadata, WarningItem
 from cadpilotv3.schemas.contract_validation import ContractCheck, ContractValidationReport
 from cadpilotv3.schemas.critic import CriticReport
+from cadpilotv3.schemas.design_synthesis import DesignSynthesis
 from cadpilotv3.schemas.export import AssemblyReport, ExportedFile, ExportSummary
 from cadpilotv3.schemas.geometry_plan import (
     AssemblyContract,
@@ -26,6 +27,7 @@ __all__ = [
     "ContractCheck",
     "ContractValidationReport",
     "CriticReport",
+    "DesignSynthesis",
     "ErrorLocation",
     "ExportSummary",
     "ExportedFile",

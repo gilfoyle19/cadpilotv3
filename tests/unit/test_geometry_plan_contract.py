@@ -126,6 +126,26 @@ def test_geometry_plan_schema_accepts_feature_and_assembly_contracts() -> None:
     assert plan.assembly_contracts[0].tolerance_mm == 0.25
 
 
+def test_geometry_plan_normalizes_harmless_design_synthesis_shape_slips() -> None:
+    plan = GeometryPlan.model_validate(
+        {
+            "artifact_type": "single_part",
+            "assembly_axes": {},
+            "part_frames": [
+                {
+                    "part": "bracket_body",
+                    "local_origin": "center of wall plate back face",
+                    "world_center": [0, 0, 0],
+                    "approximate_bounding_box_mm": [60, 70, 90],
+                }
+            ],
+        }
+    )
+
+    assert plan.assembly_axes is None
+    assert plan.part_frames[0].world_center == "[0, 0, 0]"
+
+
 def test_geometry_planner_prompt_requires_face_axis_contract() -> None:
     planner_prompt = (
         PROMPT_ROOT / "system" / "geometry_planner_agent.md"

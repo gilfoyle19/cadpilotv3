@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CoordinateConvention(BaseModel):
@@ -108,6 +108,13 @@ class PartFrame(BaseModel):
     world_center: str | None = None
     approximate_bounding_box_mm: list[float] | None = None
     functional_faces: list[FunctionalFace] = Field(default_factory=list)
+
+    @field_validator("world_center", mode="before")
+    @classmethod
+    def _normalize_world_center(cls, value):
+        if isinstance(value, list | tuple):
+            return f"[{', '.join(str(item) for item in value)}]"
+        return value
 
 
 class AssemblyPlacementConstraint(BaseModel):
@@ -219,6 +226,13 @@ class GeometryPlan(BaseModel):
     joint_definitions: list[JointDefinition] = Field(default_factory=list)
     interfaces: list[InterfaceDefinition] = Field(default_factory=list)
     failure_risks: list[FailureRisk] = Field(default_factory=list)
+
+    @field_validator("assembly_axes", mode="before")
+    @classmethod
+    def _normalize_empty_assembly_axes(cls, value):
+        if value == {}:
+            return None
+        return value
 
     @model_validator(mode="after")
     def populate_required_features(self) -> "GeometryPlan":

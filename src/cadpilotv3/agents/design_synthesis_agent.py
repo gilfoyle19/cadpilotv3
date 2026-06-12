@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+from cadpilotv3.config.settings import AppSettings
+from cadpilotv3.llm import AgentName, get_llm_factory
+from cadpilotv3.schemas.design_synthesis import DesignSynthesis
+from cadpilotv3.services.web_research_service import WebResearchContext, WebResearchService
+from cadpilotv3.shared import ainvoke_pydantic, invoke_pydantic, load_prompt_text
+from cadpilotv3.shared.prompt_context import select_relevant_few_shot_examples
+
+
+class DesignSynthesisAgent:
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
+        self.llm_factory = get_llm_factory()
+        self.web_research_service = WebResearchService(settings)
+
+    def run(self, user_prompt: str) -> DesignSynthesis:
+        llm = self.llm_factory.get_for_agent(AgentName.DESIGN_SYNTHESIS)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            research_context=self.web_research_service.research_if_needed(user_prompt),
+        )
+
+        return invoke_pydantic(
+            llm,
+            prompt,
+            DesignSynthesis,
+            agent_name=AgentName.DESIGN_SYNTHESIS.value,
+        )
+
+    async def arun(self, user_prompt: str) -> DesignSynthesis:
+        llm = self.llm_factory.get_for_agent(AgentName.DESIGN_SYNTHESIS)
+        prompt = self._build_prompt(
+            user_prompt=user_prompt,
+            research_context=await self.web_research_service.aresearch_if_needed(
+                user_prompt
+            ),
+        )
+
+        return await ainvoke_pydantic(
+            llm,
+            prompt,
+            DesignSynthesis,
+            agent_name=AgentName.DESIGN_SYNTHESIS.value,
+        )
+
+    def _build_prompt(
+        self,
+        *,
+        user_prompt: str,
+        research_context: WebResearchContext,
+    ) -> str:
+        system_prompt = load_prompt_text(self.settings, "design_synthesis_agent.md")
+        few_shot_prompt = load_prompt_text(
+            self.settings,
+            "design_synthesis_examples.md",
+        )
+        selected_examples = select_relevant_few_shot_examples(
+            few_shot_prompt=few_shot_prompt,
+            query_values=[
+                user_prompt,
+                research_context.queries,
+                research_context.researched_dimensions,
+                research_context.sources,
+                research_context.warning,
+            ],
+            heading="## Selected Design Synthesis Few-Shots",
+            max_examples=2,
+        )
+
+        return "\n\n".join(
+            [
+                system_prompt.strip(),
+                selected_examples.strip(),
+                research_context.to_prompt_block(),
+                f"User request:\n{user_prompt.strip()}",
+            ]
+        )

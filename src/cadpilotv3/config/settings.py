@@ -28,7 +28,7 @@ class AppSettings(BaseSettings):
     llm_temperature: float = 0.0
     llm_max_tokens: int = 16000
     llm_structured_max_tokens: int = 5000
-    llm_planner_max_tokens: int = 8000
+    llm_planner_max_tokens: int = 12000
     llm_critic_max_tokens: int = 6000
     llm_summary_max_tokens: int = 4000
     llm_code_max_tokens: int | None = None

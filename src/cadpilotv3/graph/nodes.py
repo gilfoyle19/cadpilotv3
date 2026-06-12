@@ -20,6 +20,7 @@ from cadpilotv3.services.code_generation_infill_service import (
 from cadpilotv3.services.contract_validation_service import ContractValidationService
 from cadpilotv3.services.critic_checkpoint_a_service import CriticCheckpointAService
 from cadpilotv3.services.critic_checkpoint_b_service import CriticCheckpointBService
+from cadpilotv3.services.design_synthesis_service import DesignSynthesisService
 from cadpilotv3.services.export_summary_service import ExportSummaryService
 from cadpilotv3.services.geometry_planner_service import GeometryPlannerService
 from cadpilotv3.services.intent_spec_service import IntentSpecService
@@ -46,6 +47,7 @@ class PipelineNodes:
         self.settings = settings
 
         self.intent_spec_service = IntentSpecService(settings)
+        self.design_synthesis_service = DesignSynthesisService(settings)
         self.geometry_planner_service = GeometryPlannerService(settings)
         self.critic_checkpoint_a_service = CriticCheckpointAService(settings)
         self.parameter_service = ParameterService(settings)
@@ -66,6 +68,29 @@ class PipelineNodes:
 
     async def aintent_spec_agent(self, state: PipelineState) -> PipelineState:
         state["spec"] = await self.intent_spec_service.aexecute(state["user_prompt"])
+        return state
+
+    def design_synthesis_agent(self, state: PipelineState) -> PipelineState:
+        synthesis = self.design_synthesis_service.execute(state["user_prompt"])
+        return self._apply_design_synthesis(state, synthesis)
+
+    async def adesign_synthesis_agent(self, state: PipelineState) -> PipelineState:
+        synthesis = await self.design_synthesis_service.aexecute(state["user_prompt"])
+        return self._apply_design_synthesis(state, synthesis)
+
+    def _apply_design_synthesis(self, state: PipelineState, synthesis) -> PipelineState:
+        state["spec"] = synthesis.spec
+        state["geometry_plan"] = synthesis.geometry_plan
+        state["parameters"] = synthesis.parameters
+        state["critic_a_report"] = synthesis.critic_a_report
+
+        report = synthesis.critic_a_report
+        if (
+            getattr(report, "verdict", None) != "pass"
+            and getattr(report, "routing", None) == "replan"
+        ):
+            state["critic_a_attempts"] = state.get("critic_a_attempts", 0) + 1
+
         return state
 
     def geometry_planner_agent(self, state: PipelineState) -> PipelineState:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class LLMProfile(str, Enum):
+class LLMProfile(StrEnum):
     STRUCTURED = "structured"
     PLANNER = "planner"
     CODER = "coder"
@@ -12,8 +12,9 @@ class LLMProfile(str, Enum):
     SUMMARY = "summary"
 
 
-class AgentName(str, Enum):
+class AgentName(StrEnum):
     INTENT_SPEC = "intent_spec_agent"
+    DESIGN_SYNTHESIS = "design_synthesis_agent"
     GEOMETRY_PLANNER = "geometry_planner_agent"
     CRITIC_A = "critic_checkpoint_a"
     PARAMETER = "parameter_agent"
@@ -26,6 +27,7 @@ class AgentName(str, Enum):
 
 AGENT_TO_PROFILE: dict[AgentName, LLMProfile] = {
     AgentName.INTENT_SPEC: LLMProfile.STRUCTURED,
+    AgentName.DESIGN_SYNTHESIS: LLMProfile.PLANNER,
     AgentName.GEOMETRY_PLANNER: LLMProfile.PLANNER,
     AgentName.CRITIC_A: LLMProfile.CRITIC,
     AgentName.PARAMETER: LLMProfile.STRUCTURED,

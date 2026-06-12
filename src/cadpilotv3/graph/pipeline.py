@@ -9,6 +9,7 @@ from cadpilotv3.graph.routing import (
     route_contract_validation,
     route_critic_a,
     route_critic_b,
+    route_design_synthesis,
     route_repair,
     route_validation,
 )
@@ -21,6 +22,7 @@ def build_pipeline(settings: AppSettings):
     _add_nodes(
         graph,
         intent_spec_agent=nodes.intent_spec_agent,
+        design_synthesis_agent=nodes.design_synthesis_agent,
         geometry_planner_agent=nodes.geometry_planner_agent,
         critic_checkpoint_a=nodes.critic_checkpoint_a,
         parameter_agent=nodes.parameter_agent,
@@ -31,7 +33,7 @@ def build_pipeline(settings: AppSettings):
         critic_checkpoint_b=nodes.critic_checkpoint_b,
         export_summary_agent=nodes.export_summary_agent,
     )
-    _wire_graph(graph)
+    _wire_graph(graph, settings=settings)
 
     return graph.compile()
 
@@ -43,6 +45,7 @@ def build_async_pipeline(settings: AppSettings):
     _add_nodes(
         graph,
         intent_spec_agent=nodes.aintent_spec_agent,
+        design_synthesis_agent=nodes.adesign_synthesis_agent,
         geometry_planner_agent=nodes.ageometry_planner_agent,
         critic_checkpoint_a=nodes.acritic_checkpoint_a,
         parameter_agent=nodes.aparameter_agent,
@@ -53,13 +56,14 @@ def build_async_pipeline(settings: AppSettings):
         critic_checkpoint_b=nodes.acritic_checkpoint_b,
         export_summary_agent=nodes.aexport_summary_agent,
     )
-    _wire_graph(graph)
+    _wire_graph(graph, settings=settings)
 
     return graph.compile()
 
 
 def _add_nodes(graph: StateGraph, **nodes) -> None:
     graph.add_node("intent_spec_agent", nodes["intent_spec_agent"])
+    graph.add_node("design_synthesis_agent", nodes["design_synthesis_agent"])
     graph.add_node("geometry_planner_agent", nodes["geometry_planner_agent"])
     graph.add_node("critic_checkpoint_a", nodes["critic_checkpoint_a"])
     graph.add_node("parameter_agent", nodes["parameter_agent"])
@@ -71,10 +75,21 @@ def _add_nodes(graph: StateGraph, **nodes) -> None:
     graph.add_node("export_summary_agent", nodes["export_summary_agent"])
 
 
-def _wire_graph(graph: StateGraph) -> None:
-    graph.set_entry_point("intent_spec_agent")
+def _wire_graph(graph: StateGraph, *, settings: AppSettings) -> None:
+    if getattr(settings, "cad_enable_design_synthesis", False):
+        graph.set_entry_point("design_synthesis_agent")
+        graph.add_conditional_edges(
+            "design_synthesis_agent",
+            route_design_synthesis,
+            {
+                "code_generation_infill_agent": "code_generation_infill_agent",
+                "geometry_planner_agent": "geometry_planner_agent",
+            },
+        )
+    else:
+        graph.set_entry_point("intent_spec_agent")
+        graph.add_edge("intent_spec_agent", "geometry_planner_agent")
 
-    graph.add_edge("intent_spec_agent", "geometry_planner_agent")
     graph.add_edge("geometry_planner_agent", "critic_checkpoint_a")
 
     graph.add_conditional_edges(

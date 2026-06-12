@@ -10,6 +10,7 @@ from cadpilotv3.graph.routing import (
     route_contract_validation,
     route_critic_a,
     route_critic_b,
+    route_design_synthesis,
     route_repair,
     route_validation,
 )
@@ -799,6 +800,70 @@ def test_route_contract_validation_keeps_critic_b_for_existing_warnings(
     state["user_facing_warnings"] = ["Proceeding with a known issue."]
 
     assert route_contract_validation(state) == "critic_checkpoint_b"
+
+
+def test_route_design_synthesis_sends_passing_self_check_to_codegen(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_a_attempts=2),
+    )
+    state = {
+        "critic_a_report": SimpleNamespace(
+            verdict="pass",
+            routing="proceed",
+            issues=[],
+        ),
+        "critic_a_attempts": 0,
+        "user_facing_warnings": [],
+    }
+
+    assert route_design_synthesis(state) == "code_generation_infill_agent"
+    assert state["user_facing_warnings"] == []
+
+
+def test_route_design_synthesis_replans_when_self_check_fails_below_budget(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_a_attempts=2),
+    )
+    state = {
+        "critic_a_report": SimpleNamespace(
+            verdict="fail",
+            routing="replan",
+            issues=[],
+        ),
+        "critic_a_attempts": 1,
+        "user_facing_warnings": [],
+    }
+
+    assert route_design_synthesis(state) == "geometry_planner_agent"
+    assert state["user_facing_warnings"] == []
+
+
+def test_route_design_synthesis_stops_when_self_check_budget_is_exhausted(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        routing,
+        "get_settings",
+        lambda: SimpleNamespace(cad_max_critic_a_attempts=2),
+    )
+    state = {
+        "critic_a_report": SimpleNamespace(
+            verdict="fail",
+            routing="replan",
+            issues=[SimpleNamespace(description="Combined plan needs review.")],
+        ),
+        "critic_a_attempts": 2,
+        "user_facing_warnings": [],
+    }
+
+    assert route_design_synthesis(state) == "code_generation_infill_agent"
+    assert state["user_facing_warnings"] == ["Combined plan needs review."]
 
 
 def test_route_critic_a_replans_when_attempt_budget_remains(monkeypatch) -> None:

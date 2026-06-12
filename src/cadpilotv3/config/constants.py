@@ -1,4 +1,5 @@
 INTENT_SPEC_AGENT = "intent_spec_agent"
+DESIGN_SYNTHESIS_AGENT = "design_synthesis_agent"
 GEOMETRY_PLANNER_AGENT = "geometry_planner_agent"
 CRITIC_CHECKPOINT_A = "critic_checkpoint_a"
 PARAMETER_AGENT = "parameter_agent"

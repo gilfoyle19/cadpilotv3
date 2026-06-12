@@ -14,6 +14,24 @@ def route_contract_validation(
     return "critic_checkpoint_b"
 
 
+def route_design_synthesis(
+    state: PipelineState,
+) -> Literal["code_generation_infill_agent", "geometry_planner_agent"]:
+    report = state["critic_a_report"]
+    max_attempts = get_settings().cad_max_critic_a_attempts
+
+    if report.verdict == "pass" or report.routing == "proceed":
+        return "code_generation_infill_agent"
+
+    if state["critic_a_attempts"] >= max_attempts:
+        state["user_facing_warnings"].extend(
+            [issue.description for issue in getattr(report, "issues", [])]
+        )
+        return "code_generation_infill_agent"
+
+    return "geometry_planner_agent"
+
+
 def route_critic_a(
     state: PipelineState,
 ) -> Literal["parameter_agent", "geometry_planner_agent"]:
