@@ -18,11 +18,15 @@ from cadpilotv3.graph.routing import (
 def build_pipeline(settings: AppSettings):
     graph = StateGraph(PipelineState)
     nodes = PipelineNodes(settings)
+    entry_nodes = (
+        {"design_synthesis_agent": nodes.design_synthesis_agent}
+        if getattr(settings, "cad_enable_design_synthesis", False)
+        else {"intent_spec_agent": nodes.intent_spec_agent}
+    )
 
     _add_nodes(
         graph,
-        intent_spec_agent=nodes.intent_spec_agent,
-        design_synthesis_agent=nodes.design_synthesis_agent,
+        **entry_nodes,
         geometry_planner_agent=nodes.geometry_planner_agent,
         critic_checkpoint_a=nodes.critic_checkpoint_a,
         parameter_agent=nodes.parameter_agent,
@@ -41,11 +45,15 @@ def build_pipeline(settings: AppSettings):
 def build_async_pipeline(settings: AppSettings):
     graph = StateGraph(PipelineState)
     nodes = PipelineNodes(settings)
+    entry_nodes = (
+        {"design_synthesis_agent": nodes.adesign_synthesis_agent}
+        if getattr(settings, "cad_enable_design_synthesis", False)
+        else {"intent_spec_agent": nodes.aintent_spec_agent}
+    )
 
     _add_nodes(
         graph,
-        intent_spec_agent=nodes.aintent_spec_agent,
-        design_synthesis_agent=nodes.adesign_synthesis_agent,
+        **entry_nodes,
         geometry_planner_agent=nodes.ageometry_planner_agent,
         critic_checkpoint_a=nodes.acritic_checkpoint_a,
         parameter_agent=nodes.aparameter_agent,
@@ -62,8 +70,10 @@ def build_async_pipeline(settings: AppSettings):
 
 
 def _add_nodes(graph: StateGraph, **nodes) -> None:
-    graph.add_node("intent_spec_agent", nodes["intent_spec_agent"])
-    graph.add_node("design_synthesis_agent", nodes["design_synthesis_agent"])
+    if "intent_spec_agent" in nodes:
+        graph.add_node("intent_spec_agent", nodes["intent_spec_agent"])
+    if "design_synthesis_agent" in nodes:
+        graph.add_node("design_synthesis_agent", nodes["design_synthesis_agent"])
     graph.add_node("geometry_planner_agent", nodes["geometry_planner_agent"])
     graph.add_node("critic_checkpoint_a", nodes["critic_checkpoint_a"])
     graph.add_node("parameter_agent", nodes["parameter_agent"])
