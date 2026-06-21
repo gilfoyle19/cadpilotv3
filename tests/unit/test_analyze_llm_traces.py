@@ -25,6 +25,8 @@ def test_analyze_trace_dir_summarizes_runs_agents_retries_and_failures(tmp_path)
             "response_length_chars": 20,
             "structured_attempt_number": 1,
             "validation_status": "passed",
+            "latency_seconds": 10.0,
+            "time_to_first_token_seconds": 1.0,
         },
     )
     _write_metadata(
@@ -38,6 +40,8 @@ def test_analyze_trace_dir_summarizes_runs_agents_retries_and_failures(tmp_path)
             "response_length_chars": 25,
             "structured_attempt_number": 2,
             "validation_status": "passed",
+            "latency_seconds": 3.5,
+            "time_to_first_token_seconds": 0.5,
         },
     )
     _write_metadata(
@@ -87,6 +91,12 @@ def test_analyze_trace_dir_summarizes_runs_agents_retries_and_failures(tmp_path)
     assert analysis.total_response_chars == 505
     assert analysis.total_retry_calls == 2
     assert analysis.total_failures == 2
+    assert analysis.latency == {"samples": 2, "p50": 6.75, "p95": 9.675}
+    assert analysis.time_to_first_token == {
+        "samples": 2,
+        "p50": 0.75,
+        "p95": 0.975,
+    }
     assert analysis.calls_per_run == {
         "min": 1,
         "median": 2.5,

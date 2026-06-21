@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -81,12 +82,18 @@ def invoke_text_with_metadata(
     agent_name: str | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> LLMTextResult:
+    started_at = time.perf_counter()
     response = llm.invoke(prompt)
+    latency_seconds = time.perf_counter() - started_at
     return _build_text_result_from_response(
         response,
         prompt=prompt,
         agent_name=agent_name,
-        trace_metadata=trace_metadata,
+        trace_metadata={
+            **(trace_metadata or {}),
+            "latency_seconds": latency_seconds,
+            "model": _get_model_name(llm),
+        },
     )
 
 
@@ -114,12 +121,18 @@ async def ainvoke_text_with_metadata(
     agent_name: str | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> LLMTextResult:
+    started_at = time.perf_counter()
     response = await _ainvoke_llm(llm, prompt)
+    latency_seconds = time.perf_counter() - started_at
     return _build_text_result_from_response(
         response,
         prompt=prompt,
         agent_name=agent_name,
-        trace_metadata=trace_metadata,
+        trace_metadata={
+            **(trace_metadata or {}),
+            "latency_seconds": latency_seconds,
+            "model": _get_model_name(llm),
+        },
     )
 
 
@@ -130,6 +143,8 @@ async def astream_text_with_metadata(
     agent_name: str | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> AsyncIterator[LLMTextStreamChunk]:
+    started_at = time.perf_counter()
+    time_to_first_token_seconds: float | None = None
     text_parts: list[str] = []
     raw_chunk_reprs: list[str] = []
     last_chunk: Any = None
@@ -142,6 +157,8 @@ async def astream_text_with_metadata(
         if not chunk_text:
             continue
 
+        if time_to_first_token_seconds is None:
+            time_to_first_token_seconds = time.perf_counter() - started_at
         chunk_count += 1
         text_parts.append(chunk_text)
         yield LLMTextStreamChunk(text=chunk_text)
@@ -159,6 +176,9 @@ async def astream_text_with_metadata(
             **(trace_metadata or {}),
             "streaming": True,
             "stream_chunk_count": chunk_count,
+            "latency_seconds": time.perf_counter() - started_at,
+            "time_to_first_token_seconds": time_to_first_token_seconds,
+            "model": _get_model_name(llm),
         },
     )
     yield LLMTextStreamChunk(text="", result=result)
@@ -501,6 +521,14 @@ def _coerce_metadata(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
         return value
     return {"value": str(value)}
+
+
+def _get_model_name(llm: Any) -> str | None:
+    for attribute in ("model_name", "model"):
+        value = getattr(llm, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _build_structured_retry_prompt(

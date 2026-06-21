@@ -16,6 +16,7 @@ class SimpleOutput(BaseModel):
 
 
 class FakeLLM:
+    model_name = "fake-model"
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
         self.prompts: list[str] = []
@@ -112,6 +113,8 @@ def test_invoke_pydantic_persists_llm_trace(tmp_path, monkeypatch) -> None:
     assert metadata["agent_name"] == "repair_agent"
     assert metadata["schema"] == "SimpleOutput"
     assert metadata["validation_status"] == "passed"
+    assert metadata["model"] == "fake-model"
+    assert metadata["latency_seconds"] >= 0
 
 
 async def test_ainvoke_pydantic_persists_llm_trace(tmp_path, monkeypatch) -> None:
@@ -150,6 +153,7 @@ async def test_ainvoke_pydantic_persists_llm_trace(tmp_path, monkeypatch) -> Non
     assert metadata["agent_name"] == "repair_agent"
     assert metadata["schema"] == "SimpleOutput"
     assert metadata["validation_status"] == "passed"
+    assert metadata["latency_seconds"] >= 0
 
 
 async def test_astream_text_with_metadata_yields_chunks_and_final_trace(
@@ -192,3 +196,5 @@ async def test_astream_text_with_metadata_yields_chunks_and_final_trace(
     metadata = json.loads((trace_dir / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["streaming"] is True
     assert metadata["stream_chunk_count"] == 3
+    assert metadata["latency_seconds"] >= 0
+    assert metadata["time_to_first_token_seconds"] >= 0

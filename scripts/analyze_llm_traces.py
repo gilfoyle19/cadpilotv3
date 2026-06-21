@@ -16,6 +16,8 @@ class AgentTraceStats:
     response_chars: int = 0
     retry_calls: int = 0
     failures: int = 0
+    latencies_seconds: list[float] = field(default_factory=list)
+    time_to_first_token_seconds: list[float] = field(default_factory=list)
 
     @property
     def avg_prompt_chars(self) -> int:
@@ -25,10 +27,16 @@ class AgentTraceStats:
     def avg_response_chars(self) -> int:
         return _safe_average(self.response_chars, self.calls)
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["avg_prompt_chars"] = self.avg_prompt_chars
         payload["avg_response_chars"] = self.avg_response_chars
+        payload["latency"] = _distribution(self.latencies_seconds)
+        payload["time_to_first_token"] = _distribution(
+            self.time_to_first_token_seconds
+        )
+        payload.pop("latencies_seconds")
+        payload.pop("time_to_first_token_seconds")
         return payload
 
 
@@ -40,6 +48,8 @@ class RunTraceStats:
     response_chars: int = 0
     retry_calls: int = 0
     failures: int = 0
+    latencies_seconds: list[float] = field(default_factory=list)
+    time_to_first_token_seconds: list[float] = field(default_factory=list)
     agents: dict[str, AgentTraceStats] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -50,6 +60,8 @@ class RunTraceStats:
             "response_chars": self.response_chars,
             "retry_calls": self.retry_calls,
             "failures": self.failures,
+            "latency": _distribution(self.latencies_seconds),
+            "time_to_first_token": _distribution(self.time_to_first_token_seconds),
             "agents": {
                 agent: stats.to_dict()
                 for agent, stats in sorted(self.agents.items())
@@ -66,6 +78,8 @@ class TraceAnalysis:
     total_response_chars: int
     total_retry_calls: int
     total_failures: int
+    latency: dict[str, int | float | None]
+    time_to_first_token: dict[str, int | float | None]
     calls_per_run: dict[str, int | float]
     agents: dict[str, AgentTraceStats]
     runs: dict[str, RunTraceStats]
@@ -79,6 +93,8 @@ class TraceAnalysis:
             "total_response_chars": self.total_response_chars,
             "total_retry_calls": self.total_retry_calls,
             "total_failures": self.total_failures,
+            "latency": self.latency,
+            "time_to_first_token": self.time_to_first_token,
             "calls_per_run": self.calls_per_run,
             "agents": {
                 agent: stats.to_dict()
@@ -99,6 +115,8 @@ def analyze_trace_dir(trace_dir: Path) -> TraceAnalysis:
     runs: dict[str, RunTraceStats] = {}
     agents: dict[str, AgentTraceStats] = {}
     seen_agents_by_run: dict[str, set[str]] = {}
+    all_latencies: list[float] = []
+    all_time_to_first_token: list[float] = []
 
     for metadata_path in metadata_files:
         metadata = _read_metadata(metadata_path)
@@ -110,6 +128,10 @@ def analyze_trace_dir(trace_dir: Path) -> TraceAnalysis:
         prompt_chars = _as_int(metadata.get("prompt_length_chars"))
         response_chars = _as_int(metadata.get("response_length_chars"))
         is_failure = _is_failure(metadata)
+        latency = _as_nonnegative_float(metadata.get("latency_seconds"))
+        time_to_first_token = _as_nonnegative_float(
+            metadata.get("time_to_first_token_seconds")
+        )
 
         run_stats = runs.setdefault(run_id, RunTraceStats(run_id=run_id))
         agent_stats = agents.setdefault(agent_name, AgentTraceStats())
@@ -129,6 +151,15 @@ def analyze_trace_dir(trace_dir: Path) -> TraceAnalysis:
                 stats.retry_calls += 1
             if is_failure:
                 stats.failures += 1
+            if latency is not None:
+                stats.latencies_seconds.append(latency)
+            if time_to_first_token is not None:
+                stats.time_to_first_token_seconds.append(time_to_first_token)
+
+        if latency is not None:
+            all_latencies.append(latency)
+        if time_to_first_token is not None:
+            all_time_to_first_token.append(time_to_first_token)
 
     call_counts = sorted(run.calls for run in runs.values())
     return TraceAnalysis(
@@ -139,6 +170,8 @@ def analyze_trace_dir(trace_dir: Path) -> TraceAnalysis:
         total_response_chars=sum(run.response_chars for run in runs.values()),
         total_retry_calls=sum(run.retry_calls for run in runs.values()),
         total_failures=sum(run.failures for run in runs.values()),
+        latency=_distribution(all_latencies),
+        time_to_first_token=_distribution(all_time_to_first_token),
         calls_per_run={
             "min": call_counts[0] if call_counts else 0,
             "median": _median(call_counts),
@@ -172,6 +205,12 @@ def format_readable_report(
             f"median {analysis.calls_per_run['median']}, "
             f"max {analysis.calls_per_run['max']}"
         ),
+        (
+            "Latency: "
+            f"n={analysis.latency['samples']}, "
+            f"p50={_format_seconds(analysis.latency['p50'])}, "
+            f"p95={_format_seconds(analysis.latency['p95'])}"
+        ),
         "",
         "Agents:",
     ]
@@ -186,7 +225,8 @@ def format_readable_report(
             f"{agent_name}: calls={stats.calls}, "
             f"prompt={stats.prompt_chars}, avg_prompt={stats.avg_prompt_chars}, "
             f"response={stats.response_chars}, retries={stats.retry_calls}, "
-            f"failures={stats.failures}"
+            f"failures={stats.failures}, "
+            f"latency_p50={_format_seconds(_distribution(stats.latencies_seconds)['p50'])}"
         )
 
     lines.extend(["", "Runs:"])
@@ -304,6 +344,39 @@ def _as_int(value: Any) -> int:
     if isinstance(value, str) and value.strip().isdigit():
         return int(value)
     return 0
+
+
+def _as_nonnegative_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if result >= 0 else None
+
+
+def _distribution(values: list[float]) -> dict[str, int | float | None]:
+    ordered = sorted(values)
+    if not ordered:
+        return {"samples": 0, "p50": None, "p95": None}
+    return {
+        "samples": len(ordered),
+        "p50": round(_percentile(ordered, 0.50), 3),
+        "p95": round(_percentile(ordered, 0.95), 3),
+    }
+
+
+def _percentile(ordered: list[float], percentile: float) -> float:
+    index = (len(ordered) - 1) * percentile
+    lower = int(index)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = index - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+
+def _format_seconds(value: int | float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}s"
 
 
 def _median(values: list[int]) -> int | float:

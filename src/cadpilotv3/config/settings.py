@@ -33,7 +33,7 @@ class AppSettings(BaseSettings):
     llm_summary_max_tokens: int = 4000
     llm_code_max_tokens: int | None = None
     llm_timeout_seconds: int = 120
-    llm_streaming: bool = Truey
+    llm_streaming: bool = True
     llm_trace_outputs: bool = True
 
     intent_web_research_enabled: bool = True
