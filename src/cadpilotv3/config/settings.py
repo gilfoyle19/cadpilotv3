@@ -22,7 +22,7 @@ class AppSettings(BaseSettings):
 
     llm_provider: str = "openai"
     llm_model: str = "gpt-4.1"
-    llm_reasoning_model: str = "gpt-4.1"
+    llm_reasoning_model: str = "gpt-5.5"
     llm_critic_model: str = "gpt-4.1"
     llm_code_model: str = "gpt-5.5"
     llm_temperature: float = 0.0
